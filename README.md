@@ -76,7 +76,7 @@ eren --debug demon slayer
 eren -p=S-mp4 death note
 ````
 
-- Sort by top (best cope for occasional allanime's irrelevant search results) 
+- Sort by top (best cope for occasional irrelevant search results of allanime)
 
 ````sh
 eren -t monster
