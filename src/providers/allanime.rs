@@ -23,8 +23,9 @@ pub async fn allanime(
     provider: &str,
     quality: &str,
     is_not_rofi: bool,
+    sort_by_top: bool,
 ) {
-    let resp = search(query, mode).await;
+    let resp = search(query, mode, sort_by_top).await;
 
     let mut ids = Vec::new();
     let mut numbered_name = String::new();
@@ -182,7 +183,7 @@ pub async fn allanime(
     }
 }
 
-async fn search(query: &str, mode: &str) -> String {
+async fn search(query: &str, mode: &str, sort_by_top: bool) -> String {
     const SEARCH_GQL: &str = "query (
         $search: SearchInput
         $translationType: VaildTranslationTypeEnumType
@@ -205,7 +206,11 @@ async fn search(query: &str, mode: &str) -> String {
         }
     }";
 
-    let sort = "";
+    let sort = if sort_by_top {
+        r#""sortBy":"Top","#
+    } else {
+        ""
+    };
 
     let variables = format!(
         r#"{{"search":{{{}"allowAdult":true,"allowUnknown":true,"query":"{}"}},"translationType":"{}"}}"#,

@@ -37,6 +37,7 @@ async fn main() {
     let mut quality = String::new();
     let mut provider = String::from("Ak");
     let mut is_not_rofi = true;
+    let mut sort_by_top = false;
 
     if is_terminal() {
         env::args().skip(1).for_each(|arg| match arg.as_str() {
@@ -48,6 +49,7 @@ async fn main() {
 \t-D | --dub\t\t dubbed video
 \t-r | --rofi\t\t use rofi                    
 \t-g | --get\t\t get vid link
+\t-t | --top\t\t sort by top (get best search matches only)
 \t-p= | --provider=\t change provider (Ak, Default, S-mp4, Sak, Luf-mp4)
 \t-q= | --quality=\t change quality(2160, 1080, 720, 480, 360)"
                 );
@@ -57,6 +59,7 @@ async fn main() {
             "-g" | "--get" => todo = "print link",
             "-D" | "--dub" => mode = "dub",
             "-r" | "--rofi" => is_not_rofi = false,
+            "-t" | "--top" => sort_by_top = true,
             a if a.starts_with("-q=") || a.starts_with("--quality=") => {
                 quality = arg.split_once('=').unwrap().1.to_string()
             }
@@ -79,5 +82,14 @@ async fn main() {
         query = selection("", "Search Anime: ", false, is_not_rofi);
     }
 
-    allanime(&query, todo, mode, &provider, &quality, is_not_rofi).await;
+    allanime(
+        &query,
+        todo,
+        mode,
+        &provider,
+        &quality,
+        is_not_rofi,
+        sort_by_top,
+    )
+    .await;
 }
