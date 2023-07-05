@@ -61,7 +61,8 @@ eren -p=S-mp4 death note
 
 - For Multi-select
 - use Tab in the tui [skim](https://github.com/lotabout/skim)
-- use Shift + Enter in [rofi](https://github.com/davatorium/rofi) 
+- use Shift + Enter in [rofi](https://github.com/davatorium/rofi)
+- just select the range like select 7 & 4 & it will play from 4 to 7
 
 - Rofi
 
