@@ -9,7 +9,7 @@ keywords = ["anime", "command-line", "scraper", "webscraper", "cli"]
 repository = "https://github.com/Based-Programmer/eren"
 
 [dependencies]
-tokio = { version = "1.28.2", features = ["full"] }
+tokio = { version = "1.29.1", features = ["full"] }
 isahc = "1.7.2"
 curl = "0.4.44"
 url = "2.4.0"

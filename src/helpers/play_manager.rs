@@ -1,8 +1,6 @@
 use crate::Vid;
-use std::{
-    env,
-    process::{Command, Stdio},
-};
+use std::{env, process::Stdio};
+use tokio::process::Command;
 
 pub async fn play_manage(vid: Vid, todo: &str) {
     match todo {
@@ -41,19 +39,23 @@ pub async fn play_manage(vid: Vid, todo: &str) {
                     .stderr(Stdio::null())
                     .spawn()
                     .expect("Failed to execute am command");
-            } else {
-                Command::new("mpv")
-                    .arg(vid.vid_link)
-                    .arg(audio_arg)
-                    .arg(sub_arg)
-                    .arg("--no-terminal")
-                    .arg("--force-window=immediate")
-                    .arg("--speed=1")
-                    .arg(format!("--force-media-title={}", vid.title))
-                    .arg(format!("--user-agent={}", vid.user_agent))
-                    .arg(format!("--referrer={}", vid.referrer))
-                    .spawn()
-                    .expect("Failed to execute mpv");
+            } else if !Command::new("mpv")
+                .arg(vid.vid_link)
+                .arg(audio_arg)
+                .arg(sub_arg)
+                .arg("--no-terminal")
+                .arg("--force-window=immediate")
+                .arg("--speed=1")
+                .arg("--sub-visibility")
+                .arg(format!("--force-media-title={}", vid.title))
+                .arg(format!("--user-agent={}", vid.user_agent))
+                .arg(format!("--referrer={}", vid.referrer))
+                .status()
+                .await
+                .expect("Failed to execute mpv")
+                .success()
+            {
+                eprintln!("Faulty video link");
             }
         }
         _ => {}
