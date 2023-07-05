@@ -73,6 +73,12 @@ eren -p=S-mp4 death note
 eren -r texhnolyze
 ````
 
+- Sort by top (best cope for occasional allanime's irrelevant search results) 
+
+````sh
+eren -t monster
+````
+  
 - Dub
   
 ````sh
