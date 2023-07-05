@@ -39,6 +39,23 @@ sudo cp "$CARGO_HOME"/bin/eren /usr/local/bin/
 ````sh
 export PATH="$CARGO_HOME/bin:$PATH"
 ````
+## Multi-Select
+
+ - use Tab in the tui [skim](https://github.com/lotabout/skim)
+ - use Shift + Enter in [rofi](https://github.com/davatorium/rofi)
+ - just select the range like select 7 & 4 & it will play from 4 to 7
+
+## Rofi
+
+ - you can execute eren from something like rofi or dmenu & rofi will spawn automatically
+ 
+ - or you can just execute it from the terminal using the normie way given below
+
+       
+ ````sh
+eren -r texhnolyze
+````
+
 ## Usage
 
 ````
@@ -57,21 +74,6 @@ eren --debug demon slayer
 
 ````sh
 eren -p=S-mp4 death note
-````
-
-- For Multi-select
-- use Tab in the tui [skim](https://github.com/lotabout/skim)
-- use Shift + Enter in [rofi](https://github.com/davatorium/rofi)
-- just select the range like select 7 & 4 & it will play from 4 to 7
-
-- Rofi
-
- - you can execute eren from something like rofi or dmenu & rofi will spawn automatically
- 
- - or you can just execute it from the terminal using the normie way given below
-    
- ````sh
-eren -r texhnolyze
 ````
 
 - Sort by top (best cope for occasional allanime's irrelevant search results) 
