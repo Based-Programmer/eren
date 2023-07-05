@@ -59,11 +59,9 @@ eren --debug demon slayer
 eren -p=S-mp4 death note
 ````
 
-- Dub
-  
-````sh
-eren -D great pretender
-````
+- For Multi-select
+- use Tab in the tui [skim](https://github.com/lotabout/skim)
+- use Shift + Enter in [rofi](https://github.com/davatorium/rofi) 
 
 - Rofi
 
@@ -75,6 +73,12 @@ eren -D great pretender
 eren -r texhnolyze
 ````
 
+- Dub
+  
+````sh
+eren -D great pretender
+````
+
 - More at help
 
 ````sh
@@ -84,3 +88,8 @@ eren -h
 ## Optimal Dependencies
 
 - mpv (Streaming video)
+
+## Acknowledgement
+- Heavily inspired from [ani-cli](https://github.com/pystardust/ani-cli)
+- Special thanks to KR for decoding the [encryption](https://github.com/justfoolingaround/animdl/commit/c4e6a86)
+- fuzzy tui [skim](https://github.com/lotabout/skim)
