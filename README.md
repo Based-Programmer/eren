@@ -94,11 +94,16 @@ eren -D great pretender
 eren -h
 ````
 
-## Optimal Dependencies
+## Dependency
 
-- mpv (Streaming video)
+- mpv (best media player)
+
+## Optimal Dependency
+
+- rofi (external selection menu)
 
 ## Acknowledgement
+
 - Heavily inspired from [ani-cli](https://github.com/pystardust/ani-cli)
 - Special thanks to KR for decoding the [encryption](https://github.com/justfoolingaround/animdl/commit/c4e6a86)
 - fuzzy tui [skim](https://github.com/lotabout/skim)
