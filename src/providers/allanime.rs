@@ -5,8 +5,11 @@ use crate::{
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde_json::Value;
-use std::process::exit;
-use tokio::{sync::mpsc, task};
+use std::{process::exit, sync::Arc};
+use tokio::{
+    sync::{mpsc, Mutex},
+    task,
+};
 use url::form_urlencoded::byte_serialize;
 
 const USER_AGENT: &str = "uwu";
@@ -18,7 +21,7 @@ const RESET: &str = "\u{1b}[0m";
 
 pub async fn allanime(
     query: &str,
-    todo: &str,
+    todo: String,
     mode: &str,
     provider: &str,
     quality: &str,
@@ -74,49 +77,44 @@ pub async fn allanime(
     let total_episodes = episode_vec.len();
 
     let mut choice = String::new();
-    let mut episode_index = 9999;
+    let mut episode_index = 0;
 
     while choice != *"quit" {
-        let mut start = match choice.as_str() {
-            "next" => episode_vec[episode_index + 1].to_string(),
-            "previous" => episode_vec[episode_index - 1].to_string(),
-            "replay" => episode_vec[episode_index].to_string(),
+        let start = match choice.as_str() {
+            "next" => episode_vec[episode_index].to_string(),
+            "previous" => episode_vec[episode_index - 2].to_string(),
+            "replay" => episode_vec[episode_index - 1].to_string(),
             _ => selection(episode, "Select episode: ", true, is_not_rofi),
         };
 
-        let end: u16 = start.lines().last().unwrap().parse().unwrap();
-        start = start.lines().next().unwrap().to_string();
-        let mut start_num: u16 = start.parse().unwrap();
+        let mut start = start.lines();
+        let end = start.clone().last().unwrap();
+        let start = start.next().unwrap();
+
+        episode_index = episode.lines().position(|x| x == start).unwrap();
 
         let (sender, mut receiver) = mpsc::channel(1);
 
-        let play_task = match todo {
-            "play" => task::spawn(async move {
-                while let Some(video) = receiver.recv().await {
-                    play_manage(video, "play").await;
-                }
-            }),
-            "print link" => task::spawn(async move {
-                while let Some(video) = receiver.recv().await {
-                    play_manage(video, "print link").await;
-                }
-            }),
-            _ => task::spawn(async move {
-                while let Some(video) = receiver.recv().await {
-                    play_manage(video, "debug").await;
-                }
-            }),
-        };
+        let todo = todo.clone();
 
-        while start_num <= end {
-            episode_index = episode.lines().position(|x| x == start).unwrap();
+        let play_task = task::spawn(async move {
+            while let Some(video) = receiver.recv().await {
+                let todo_mutex = Arc::new(Mutex::new(&todo));
+                play_manage(video, todo_mutex).await;
+            }
+        });
+
+        let mut current_ep = "";
+
+        while current_ep != end {
+            current_ep = episode.lines().nth(episode_index).unwrap();
 
             let mut vid = Vid {
-                title: format!("{} Episode {}", anime_name, start),
+                title: format!("{} Episode {}", anime_name, current_ep),
                 ..Default::default()
             };
 
-            let resp = get_episodes(id, &start, mode).await;
+            let resp = get_episodes(id, current_ep, mode).await;
 
             let source: Value = serde_json::from_str(&resp).expect("Failed to derive json");
 
@@ -148,24 +146,23 @@ pub async fn allanime(
             vid = get_link(source_name, source_url, provider, quality, vid).await;
             sender.send(vid).await.expect("Failed to send link");
 
-            start_num += 1;
-            start = start_num.to_string();
+            episode_index += 1;
         }
 
         drop(sender);
 
         play_task.await.expect("Play task panicked");
 
-        if episode_index == 0 && episode_index == total_episodes - 1 {
+        if episode_index == 1 && episode_index == total_episodes {
             choice = selection("quit\nreplay", "Enter a choice: ", false, is_not_rofi);
-        } else if episode_index == 0 {
+        } else if episode_index == 1 {
             choice = selection(
                 "quit\nnext\nselect\nreplay",
                 "Enter a choice: ",
                 false,
                 is_not_rofi,
             );
-        } else if episode_index == total_episodes - 1 {
+        } else if episode_index == total_episodes {
             choice = selection(
                 "quit\nprevious\nselect\nreplay",
                 "Enter a choice: ",
@@ -223,7 +220,7 @@ async fn search(query: &str, mode: &str, sort_by_top: bool) -> String {
         byte_serialize(SEARCH_GQL.as_bytes()).collect::<String>()
     );
 
-    get_curl(&link, USER_AGENT, REFERER).await
+    get_isahc(&link, USER_AGENT, REFERER).await
 }
 
 async fn get_episodes(id: &str, episode_num: &str, mode: &str) -> String {
@@ -248,7 +245,7 @@ async fn get_episodes(id: &str, episode_num: &str, mode: &str) -> String {
         byte_serialize(EPISODES_GQL.as_bytes()).collect::<String>()
     );
 
-    get_curl(
+    get_isahc(
         &link,
         "Mozilla/5.0 (X11; Linux x86_64; rv:99.0) Gecko/20100101 Firefox/100.0",
         REFERER,

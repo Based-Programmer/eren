@@ -32,8 +32,8 @@ impl Default for Vid {
 #[tokio::main]
 async fn main() {
     let mut query = String::new();
-    let mut todo = "play";
-    let mut mode = "sub";
+    let mut todo = String::from("play");
+    let mut mode = "dub";
     let mut quality = String::new();
     let mut provider = String::from("Ak");
     let mut is_not_rofi = true;
@@ -46,18 +46,20 @@ async fn main() {
                     "\nUsage :\teren <argument> <search query>\n
 \t-h | --help\t\t Print Help
 \t-b | --debug\t\t get vid link & other data
-\t-D | --dub\t\t dubbed video
+\t-s | --sub\t\t dubbed video
 \t-r | --rofi\t\t use rofi                    
 \t-g | --get\t\t get vid link
+\t-d | --download\t download                    
 \t-t | --top\t\t sort by top (get best search matches only)
 \t-p= | --provider=\t change provider (Ak, Default, S-mp4, Sak, Luf-mp4)
 \t-q= | --quality=\t change quality(2160, 1080, 720, 480, 360)"
                 );
                 exit(0);
             }
-            "-b" | "--debug" => todo = "debug",
-            "-g" | "--get" => todo = "print link",
-            "-D" | "--dub" => mode = "dub",
+            "-b" | "--debug" => todo = String::from("debug"),
+            "-g" | "--get" => todo = String::from("print link"),
+            "-d" | "--download" => todo = String::from("download"),
+            "-s" | "--sub" => mode = "sub",
             "-r" | "--rofi" => is_not_rofi = false,
             "-t" | "--top" => sort_by_top = true,
             a if a.starts_with("-q=") || a.starts_with("--quality=") => {
@@ -79,7 +81,11 @@ async fn main() {
         query = query.trim_end_matches('\n').to_string();
     } else {
         is_not_rofi = false;
+
         query = selection("", "Search Anime: ", false, is_not_rofi);
+        if query.is_empty() {
+            exit(0);
+        }
     }
 
     allanime(
