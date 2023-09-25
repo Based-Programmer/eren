@@ -33,7 +33,7 @@ impl Default for Vid {
 async fn main() {
     let mut query = String::new();
     let mut todo = String::from("play");
-    let mut mode = "dub";
+    let mut sub = false;
     let mut quality = String::new();
     let mut provider = String::from("Ak");
     let mut is_not_rofi = true;
@@ -59,7 +59,7 @@ async fn main() {
             "-b" | "--debug" => todo = String::from("debug"),
             "-g" | "--get" => todo = String::from("print link"),
             "-d" | "--download" => todo = String::from("download"),
-            "-s" | "--sub" => mode = "sub",
+            "-s" | "--sub" => sub = true,
             "-r" | "--rofi" => is_not_rofi = false,
             "-t" | "--top" => sort_by_top = true,
             a if a.starts_with("-q=") || a.starts_with("--quality=") => {
@@ -78,7 +78,9 @@ async fn main() {
             println!("Search a Cartoon/Anime");
             stdin().read_line(&mut query).expect("Failed to read line");
         }
-        query = query.trim_end_matches('\n').to_string();
+        query = query
+            .trim_end_matches(|ch| ch == '\n' || ch == ' ')
+            .to_string();
     } else {
         is_not_rofi = false;
 
@@ -91,9 +93,9 @@ async fn main() {
     allanime(
         &query,
         todo,
-        mode,
         &provider,
         &quality,
+        sub,
         is_not_rofi,
         sort_by_top,
     )

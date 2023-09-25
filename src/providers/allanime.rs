@@ -14,6 +14,8 @@ use url::form_urlencoded::byte_serialize;
 
 const USER_AGENT: &str = "uwu";
 const REFERER: &str = "https://allanime.to";
+const ALLANIME_API: &str = "https://api.allanime.day/api";
+const ALLANIME_CLOCK_JSON: &str = "https://allanime.day/apivtwo/clock.json?id=";
 const RED: &str = "\u{1b}[31m";
 const RESET: &str = "\u{1b}[0m";
 //const GREEN: &str = "\u{1b}[32m";
@@ -22,13 +24,15 @@ const RESET: &str = "\u{1b}[0m";
 pub async fn allanime(
     query: &str,
     todo: String,
-    mode: &str,
     provider: &str,
     quality: &str,
+    sub: bool,
     is_not_rofi: bool,
     sort_by_top: bool,
 ) {
-    let resp = search(query, mode, sort_by_top).await;
+    let mode: Box<str> = if sub { "sub" } else { "dub" }.into();
+
+    let resp = search(query, &mode, sort_by_top).await;
 
     let mut ids = Vec::new();
     let mut numbered_name = String::new();
@@ -42,7 +46,7 @@ pub async fn allanime(
             exit(1);
         }
 
-        let mut count = 1;
+        let mut count: u8 = 1;
         let mut newline = "";
 
         shows.iter().for_each(|show| {
@@ -57,7 +61,7 @@ pub async fn allanime(
             count += 1;
             newline = "\n";
 
-            if let Some(ep) = show["availableEpisodesDetail"][mode].as_array() {
+            if let Some(ep) = show["availableEpisodesDetail"][&*mode].as_array() {
                 let episode = ep
                     .iter()
                     .map(|episode| episode.as_str().unwrap().trim_matches('"'))
@@ -74,16 +78,16 @@ pub async fn allanime(
     let id = ids[index as usize];
     let episode_vec = &episodes[index as usize];
     let episode = &episode_vec.join("\n");
-    let total_episodes = episode_vec.len();
+    let total_episodes = episode_vec.len() as u16;
 
     let mut choice = String::new();
-    let mut episode_index = 0;
+    let mut episode_index: u16 = 0;
 
     while choice != *"quit" {
         let start = match choice.as_str() {
-            "next" => episode_vec[episode_index].to_string(),
-            "previous" => episode_vec[episode_index - 2].to_string(),
-            "replay" => episode_vec[episode_index - 1].to_string(),
+            "next" => episode_vec[episode_index as usize].to_string(),
+            "previous" => episode_vec[episode_index as usize - 2].to_string(),
+            "replay" => episode_vec[episode_index as usize - 1].to_string(),
             _ => selection(episode, "Select episode: ", true, is_not_rofi),
         };
 
@@ -91,7 +95,7 @@ pub async fn allanime(
         let end = start.clone().last().unwrap();
         let start = start.next().unwrap();
 
-        episode_index = episode.lines().position(|x| x == start).unwrap();
+        episode_index = episode.lines().position(|x| x == start).unwrap() as u16;
 
         let (sender, mut receiver) = mpsc::channel(1);
 
@@ -107,14 +111,14 @@ pub async fn allanime(
         let mut current_ep = "";
 
         while current_ep != end {
-            current_ep = episode.lines().nth(episode_index).unwrap();
+            current_ep = episode.lines().nth(episode_index as usize).unwrap();
 
             let mut vid = Vid {
                 title: format!("{} Episode {}", anime_name, current_ep),
                 ..Default::default()
             };
 
-            let resp = get_episodes(id, current_ep, mode).await;
+            let resp = get_episodes(id, current_ep, &mode).await;
 
             let source: Value = serde_json::from_str(&resp).expect("Failed to derive json");
 
@@ -124,10 +128,7 @@ pub async fn allanime(
             if let Some(source_urls) = source["data"]["episode"]["sourceUrls"].as_array() {
                 source_urls.iter().for_each(|url| {
                     let name = url["sourceName"].as_str().expect("sourceName wasn't found");
-                    let link = url["sourceUrl"]
-                        .as_str()
-                        .expect("sourceUrl wasn't found")
-                        .to_string();
+                    let link = url["sourceUrl"].as_str().expect("sourceUrl wasn't found");
 
                     if name == "Default"
                         || name == "S-mp4"
@@ -135,7 +136,7 @@ pub async fn allanime(
                         || name == "Luf-mp4"
                         || name == "Ak"
                     {
-                        let decoded_link = decrypt_allanime(&link);
+                        let decoded_link = decrypt_allanime(link);
 
                         source_url.push(decoded_link);
                         source_name.push(name);
@@ -215,7 +216,8 @@ async fn search(query: &str, mode: &str, sort_by_top: bool) -> String {
     );
 
     let link = format!(
-        "https://api.allanime.day/allanimeapi?variables={}&query={}",
+        "{}?variables={}&query={}",
+        ALLANIME_API,
         byte_serialize(variables.as_bytes()).collect::<String>(),
         byte_serialize(SEARCH_GQL.as_bytes()).collect::<String>()
     );
@@ -240,39 +242,25 @@ async fn get_episodes(id: &str, episode_num: &str, mode: &str) -> String {
     );
 
     let link = format!(
-        "https://api.allanime.day/allanimeapi?variables={}&query={}",
+        "{}?variables={}&query={}",
+        ALLANIME_API,
         byte_serialize(variables.as_bytes()).collect::<String>(),
         byte_serialize(EPISODES_GQL.as_bytes()).collect::<String>()
     );
 
-    get_isahc(
-        &link,
-        "Mozilla/5.0 (X11; Linux x86_64; rv:99.0) Gecko/20100101 Firefox/100.0",
-        REFERER,
-    )
-    .await
+    get_isahc(&link, USER_AGENT, REFERER).await
 }
 
-fn decrypt_allanime(link: &str) -> String {
-    let hex = link.trim_start_matches("##");
-    const PASSWORD: &str = "1234567890123456789";
-    let data = hex::decode(hex).unwrap();
+fn decrypt_allanime(source_url: &str) -> String {
+    const PASSWORD: u8 = 56;
 
-    let genexp = || {
-        data.iter().map(|segment| {
-            let mut segment = *segment;
+    let decoded_link: String = hex::decode(&source_url[2..])
+        .expect("Failed to decode hex")
+        .into_iter()
+        .map(|segment| (segment ^ PASSWORD) as char)
+        .collect();
 
-            PASSWORD.chars().for_each(|char| {
-                segment ^= char as u8;
-            });
-            segment as char
-        })
-    };
-
-    genexp().collect::<String>().replace(
-        "/apivtwo/clock?id=",
-        "https://embed.ssbcontent.site/apivtwo/clock.json?id=",
-    )
+    decoded_link.replace("/apivtwo/clock?id=", ALLANIME_CLOCK_JSON)
 }
 
 async fn get_link(
@@ -337,7 +325,7 @@ async fn get_link(
         }
         if vid.vid_link.is_empty() {
             static RE: Lazy<Regex> = Lazy::new(|| {
-                Regex::new(r#"https://repackager.wixmp.com/(.*/),([^,]*)[^/]*(/mp4/file\.mp4)"#)
+                Regex::new(r"https://repackager.wixmp.com/(.*/),([^,]*)[^/]*(/mp4/file\.mp4)")
                     .unwrap()
             });
             vid.vid_link = format!(

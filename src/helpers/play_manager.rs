@@ -71,7 +71,7 @@ pub async fn play_manage(vid: Vid, todo: Arc<Mutex<&String>>) {
                     .arg(&vid.vid_link)
                     .status()
                     .await
-                    .expect("Failed to execute mpv")
+                    .expect("Failed to execute hls")
                     .success()
                 {
                     println!("\nDownload Completed: {}", vid.title);
@@ -93,7 +93,7 @@ pub async fn play_manage(vid: Vid, todo: Arc<Mutex<&String>>) {
                     .arg(format!("{}.mp4", vid.title))
                     .status()
                     .await
-                    .expect("Failed to execute mpv")
+                    .expect("Failed to execute ffmpeg")
                     .success()
                 {
                     println!("\nVideo & audio merged successfully");
@@ -137,7 +137,7 @@ async fn download(vid: &Vid, link: &str, types: &str, extension: &str) {
         .arg(format!("--referer={}", vid.referrer))
         .status()
         .await
-        .expect("Failed to execute mpv")
+        .expect("Failed to execute aria2c")
         .success()
     {
         println!("\nDownloaded successfully");
