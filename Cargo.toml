@@ -2,7 +2,7 @@
 name = "eren"
 authors = ["BASED"]
 license = "GPL-3.0"
-version = "0.1.6"
+version = "0.1.7"
 edition = "2021"
 description = "Stream & Download Cartoons & Animes"
 keywords = ["anime", "allanime", "gogoanime", "scraper", "cli"]
@@ -12,9 +12,13 @@ repository = "https://github.com/Based-Programmer/eren"
 tokio = { version = "1.32.0", features = ["full"] }
 isahc = "1.7.2"
 url = "2.4.1"
-#serde = { version = "1.0.178", features = ["derive"] }
 serde_json = "1.0.107"
 hex = "0.4.3"
 skim = "0.10.4"
 regex = "1.9.5"
 once_cell = "1.18.0"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1

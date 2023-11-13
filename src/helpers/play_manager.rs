@@ -1,33 +1,19 @@
-use crate::Vid;
-use std::{env, process::Stdio, sync::Arc};
-use tokio::{fs, process::Command, sync::Mutex};
+use crate::{Todo, Vid};
+use std::{env, process::Stdio};
+use tokio::{fs, process::Command};
 
-pub async fn play_manage(vid: Vid, todo: Arc<Mutex<&String>>) {
-    let todo = todo.lock().await;
-
-    match todo.as_str() {
-        "debug" => println!("{vid:#?}"),
-        "print link" => {
-            println!("{}", vid.vid_link);
-
-            if !vid.audio_link.is_empty() {
-                println!("{}", vid.audio_link);
-            }
-
-            if !vid.subtitle_link.is_empty() {
-                println!("{}", vid.subtitle_link);
-            }
-        }
-        "play" => {
+pub async fn play_manage(vid: Vid, todo: Todo) {
+    match todo {
+        Todo::Play => {
             let mut audio_arg = String::new();
             let mut sub_arg = String::new();
 
-            if !vid.audio_link.is_empty() {
-                audio_arg = format!("--audio-file={}", vid.audio_link)
+            if let Some(audio_link) = vid.audio_link {
+                audio_arg = format!("--audio-file={}", audio_link)
             }
 
-            if !vid.subtitle_link.is_empty() {
-                sub_arg = format!("--sub-file={}", vid.subtitle_link)
+            if let Some(sub_link) = vid.subtitle_link {
+                sub_arg = format!("--sub-file={}", sub_link)
             }
 
             if env::consts::OS == "android" {
@@ -50,8 +36,8 @@ pub async fn play_manage(vid: Vid, todo: Arc<Mutex<&String>>) {
                 .arg("--speed=1")
                 .arg("--sub-visibility")
                 .arg(format!("--force-media-title={}", vid.title))
-                .arg(format!("--user-agent={}", vid.user_agent))
-                .arg(format!("--referrer={}", vid.referrer))
+                //.arg(format!("--user-agent={}", vid.user_agent))
+                //.arg(format!("--referrer={}", vid.referrer))
                 .output()
                 .await
                 .expect("Failed to execute mpv")
@@ -63,7 +49,7 @@ pub async fn play_manage(vid: Vid, todo: Arc<Mutex<&String>>) {
                 eprintln!("Faulty video link");
             }
         }
-        "download" => {
+        Todo::Download => {
             if vid.vid_link.ends_with(".m3u8") {
                 if Command::new("hls")
                     .args(["-n", "38"])
@@ -78,10 +64,10 @@ pub async fn play_manage(vid: Vid, todo: Arc<Mutex<&String>>) {
                 } else {
                     eprintln!("\nDownload failed {}", vid.title);
                 }
-            } else if !vid.audio_link.is_empty() {
+            } else if let Some(audio_link) = &vid.audio_link {
                 download(&vid, &vid.vid_link, " video", "mp4").await;
 
-                download(&vid, &vid.audio_link, " audio", "mp3").await;
+                download(&vid, audio_link, " audio", "mp3").await;
 
                 let vid_title = format!("{} video.{}", vid.title, "mp4");
                 let audio_title = format!("{} audio.{}", vid.title, "mp3");
@@ -112,11 +98,22 @@ pub async fn play_manage(vid: Vid, todo: Arc<Mutex<&String>>) {
                 download(&vid, &vid.vid_link, "", "mp4").await;
             }
 
-            if !vid.subtitle_link.is_empty() {
-                download(&vid, &vid.subtitle_link, " subtitle", "srt").await;
+            if let Some(sub_link) = &vid.subtitle_link {
+                download(&vid, sub_link, " subtitle", "srt").await;
             }
         }
-        _ => {}
+        Todo::GetLink => {
+            println!("{}", vid.vid_link);
+
+            if let Some(audio_link) = vid.audio_link {
+                println!("{}", audio_link);
+            }
+
+            if let Some(sub_link) = vid.subtitle_link {
+                println!("{}", sub_link);
+            }
+        }
+        Todo::Debug => println!("{vid:#?}"),
     }
 }
 
@@ -133,8 +130,8 @@ async fn download(vid: &Vid, link: &str, types: &str, extension: &str) {
         .arg("--summary-interval=0")
         .arg("--download-result=hide")
         .arg(format!("--out={}{}.{}", vid.title, types, extension))
-        .arg(format!("--user-agent={}", vid.user_agent))
-        .arg(format!("--referer={}", vid.referrer))
+        //.arg(format!("--user-agent={}", vid.user_agent))
+        //.arg(format!("--referer={}", vid.referrer))
         .status()
         .await
         .expect("Failed to execute aria2c")
