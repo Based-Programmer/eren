@@ -2,7 +2,7 @@
 name = "eren"
 authors = ["BASED"]
 license = "GPL-3.0"
-version = "0.1.7"
+version = "0.1.8"
 edition = "2021"
 description = "Stream & Download Cartoons & Animes"
 keywords = ["anime", "allanime", "gogoanime", "scraper", "cli"]

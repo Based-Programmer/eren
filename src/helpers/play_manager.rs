@@ -5,15 +5,14 @@ use tokio::{fs, process::Command};
 pub async fn play_manage(vid: Vid, todo: Todo) {
     match todo {
         Todo::Play => {
-            let mut audio_arg = String::new();
-            let mut sub_arg = String::new();
+            let mut mpv_args = Vec::new();
 
             if let Some(audio_link) = vid.audio_link {
-                audio_arg = format!("--audio-file={}", audio_link)
+                mpv_args.push(format!("--audio-file={}", audio_link))
             }
 
             if let Some(sub_link) = vid.subtitle_link {
-                sub_arg = format!("--sub-file={}", sub_link)
+                mpv_args.push(format!("--sub-file={}", sub_link))
             }
 
             if env::consts::OS == "android" {
@@ -28,14 +27,15 @@ pub async fn play_manage(vid: Vid, todo: Todo) {
                     .spawn()
                     .expect("Failed to execute am command");
             } else if Command::new("mpv")
-                .arg(vid.vid_link)
-                .arg(audio_arg)
-                .arg(sub_arg)
-                .arg("--no-terminal")
-                .arg("--force-window=immediate")
-                .arg("--speed=1")
-                .arg("--sub-visibility")
-                .arg(format!("--force-media-title={}", vid.title))
+                .args(mpv_args)
+                .args([
+                    &vid.vid_link,
+                    "--no-terminal",
+                    "--force-window=immediate",
+                    "--speed=1",
+                    "--sub-visibility",
+                    &format!("--force-media-title={}", vid.title),
+                ])
                 //.arg(format!("--user-agent={}", vid.user_agent))
                 //.arg(format!("--referrer={}", vid.referrer))
                 .output()

@@ -69,7 +69,9 @@ pub async fn allanime(
 
     let selected = selection(&numbered_name, "Select anime: ", false, is_not_rofi);
     drop(numbered_name);
-    let (index, anime_name) = selected.split_once(' ').expect("Failed to split");
+    let (index, anime_name) = selected
+        .split_once(' ')
+        .expect("Failed to split index & anime name");
 
     let index = index.parse::<u8>().expect("Failed to parse index") - 1;
     let id = ids[index as usize];
