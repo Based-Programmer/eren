@@ -59,12 +59,13 @@ eren --debug demon slayer
 eren -p=S-mp4 death note
 ````
 
-- For Multi-select
+####  Multi-select
+
 - use Tab in the tui [skim](https://github.com/lotabout/skim)
 - use Shift + Enter in [rofi](https://github.com/davatorium/rofi) 
 - select 1 & 12 & it will play 1 to 12
 
-- Rofi
+#### Rofi
 
  - you can execute eren from something like rofi or dmenu & rofi will spawn automatically
  
