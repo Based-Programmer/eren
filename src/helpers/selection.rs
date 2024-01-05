@@ -1,5 +1,4 @@
-use skim::prelude::{Skim, SkimItemReader, SkimOptionsBuilder};
-use std::fmt::Write as _;
+use skim::prelude::{Key::ESC, Skim, SkimItemReader, SkimOptionsBuilder};
 use std::{
     error::Error,
     io::{Cursor, Read, Write},
@@ -23,32 +22,25 @@ fn skim(selection: &str, prompt: &str, is_multi: bool) -> String {
 
     Skim::run_with(&options, Some(items))
         .map(|out| {
+            if out.final_key == ESC {
+                eprintln!("Nothing's selected");
+                exit(0);
+            }
+
             out.selected_items
                 .iter()
-                .fold(String::new(), |mut output, item| {
-                    let _ = writeln!(output, "{}", item.output());
-                    output
-                })
-                .trim_end_matches('\n')
-                .to_string()
+                .map(|item| item.output())
+                .collect::<Vec<_>>()
+                .join("\n")
         })
-        .unwrap_or_else(|| {
-            eprintln!("No input to fuzzy selector skim");
-            exit(1);
-        })
+        .expect("No input to fuzzy selector skim")
 }
 
-pub fn selection(selection: &str, prompt: &str, is_multi: bool, is_not_rofi: bool) -> String {
-    if is_not_rofi {
-        skim(selection, prompt, is_multi)
+pub fn selection(selection: &str, prompt: &str, is_multi: bool, is_rofi: bool) -> String {
+    if is_rofi {
+        rofi(selection, prompt, is_multi).expect("Failed to use rofi")
     } else {
-        match rofi(selection, prompt, is_multi) {
-            Ok(selection) => selection,
-            Err(err) => {
-                eprintln!("Error: {err}");
-                exit(1);
-            }
-        }
+        skim(selection, prompt, is_multi)
     }
 }
 
@@ -62,7 +54,8 @@ fn rofi(selection: &str, prompt: &str, is_multi: bool) -> Result<String, Box<dyn
         .args(["-p", prompt])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .spawn()?;
+        .spawn()
+        .expect("Rofi not installed");
 
     process.stdin.unwrap().write_all(selection.as_bytes())?;
 

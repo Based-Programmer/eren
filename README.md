@@ -20,7 +20,7 @@ cargo build --release
 sudo cp target/release/eren /usr/local/bin/
 ````
 
-- Or Build it directly from crate
+- Or Build it directly with cargo
 
 ````sh
 cargo install eren
@@ -96,6 +96,7 @@ eren -h
 ## Dependency
 
 - mpv (best media player)
+- ffmpeg (merging video & audio)
 
 ## Optimal Dependency
 

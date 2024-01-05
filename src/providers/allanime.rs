@@ -1,22 +1,23 @@
 use crate::{
-    helpers::{play_manager::play_manage, reqwests::get_isahc, selection::selection},
+    helpers::{
+        play_manager::play_manage,
+        reqwests::{client, get_isahc},
+        selection::selection,
+    },
     Todo, Vid,
 };
+
+use isahc::HttpClient;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde_json::Value;
-use std::process::exit;
+use std::{error::Error, process::exit};
 use tokio::{sync::mpsc, task};
 use url::form_urlencoded::byte_serialize;
 
-const USER_AGENT: &str = "uwu";
-const REFERER: &str = "https://allanime.to";
 const ALLANIME_API: &str = "https://api.allanime.day/api";
-const ALLANIME_CLOCK_JSON: &str = "https://allanime.day/apivtwo/clock.json?id=";
 const RED: &str = "\u{1b}[31m";
 const RESET: &str = "\u{1b}[0m";
-// const GREEN: &str = "\u{1b}[32m";
-// const YELLOW: &str = "\u{1b}[33m";
 
 pub async fn allanime(
     query: &str,
@@ -24,76 +25,86 @@ pub async fn allanime(
     provider: u8,
     quality: u16,
     sub: bool,
-    is_not_rofi: bool,
+    is_rofi: bool,
     sort_by_top: bool,
-) {
+) -> Result<(), Box<dyn Error>> {
     let mode = if sub { "sub" } else { "dub" };
-    let mut ids = Vec::new();
-    let mut numbered_name = String::new();
-    let mut episodes = Vec::new();
+    let client = &client("uwu", "https://allanime.to")?;
 
-    let data: Value = {
-        let resp = search(query, mode, sort_by_top).await;
+    let search_data: Value = {
+        let resp = search(query, mode, sort_by_top, client).await?;
         serde_json::from_str(&resp).expect("Failed to derive json from search resp")
     };
 
-    if let Some(shows) = data["data"]["shows"]["edges"].as_array() {
-        if shows.is_empty() {
-            eprintln!("{}No result{}", RED, RESET);
-            exit(1);
-        }
+    let mut ids: Vec<Box<str>> = Vec::new();
+    let mut episodes = Vec::new();
 
-        let mut newline = "";
+    let anime_names = {
+        let mut anime_names = Vec::new();
 
-        for (show, count) in shows.iter().zip(1u8..) {
-            ids.push(show["_id"].as_str().expect("id wasn't found"));
-
-            if let Some(name) = show["englishName"].as_str() {
-                numbered_name = format!("{numbered_name}{newline}{count} {name}");
-            } else {
-                let name = show["name"].as_str().expect("name wasn't found");
-                numbered_name = format!("{numbered_name}{newline}{count} {name}");
+        if let Some(shows) = search_data["data"]["shows"]["edges"].as_array() {
+            if shows.is_empty() {
+                eprintln!("{}No result{}", RED, RESET);
+                exit(1);
             }
-            newline = "\n";
 
-            if let Some(ep) = show["availableEpisodesDetail"][mode].as_array() {
-                let episode: Box<[&str]> = ep
-                    .iter()
-                    .map(|episode| episode.as_str().unwrap().trim_matches('"'))
-                    .rev()
-                    .collect();
-                episodes.push(episode);
+            for (i, show) in shows.iter().enumerate() {
+                ids.push(show["_id"].as_str().expect("id wasn't found").into());
+
+                if let Some(name) = show["englishName"].as_str() {
+                    anime_names.push(format!("{i} {name}"));
+                } else {
+                    let name = show["name"].as_str().expect("name wasn't found");
+                    anime_names.push(format!("{i} {name}"));
+                }
+
+                if let Some(ep) = show["availableEpisodesDetail"][mode].as_array() {
+                    let episode: Box<[Box<str>]> = ep
+                        .iter()
+                        .map(|episode| episode.as_str().unwrap().trim_matches('"').into())
+                        .rev()
+                        .collect();
+                    episodes.push(episode);
+                }
             }
         }
-    }
+        anime_names.join("\n").into_boxed_str()
+    };
 
-    let selected = selection(&numbered_name, "Select anime: ", false, is_not_rofi);
-    drop(numbered_name);
+    drop(search_data);
+    let episodes = episodes.into_boxed_slice();
+    let ids = ids.into_boxed_slice();
+
+    let selected = selection(&anime_names, "Select anime: ", false, is_rofi);
+    drop(anime_names);
+
     let (index, anime_name) = selected
         .split_once(' ')
         .expect("Failed to split index & anime name");
 
-    let index = index.parse::<u8>().expect("Failed to parse index") - 1;
-    let id = ids[index as usize];
-    let episode_vec = &episodes[index as usize];
-    let episode = episode_vec.join("\n").into_boxed_str();
+    let index = index.parse::<u8>().expect("Failed to parse index");
+    let id = ids[index as usize].clone();
+    let episode = episodes[index as usize].join("\n").into_boxed_str();
+    let episode_vec: Box<[&str]> = episode.lines().collect();
     let total_episodes = episode_vec.len() as u16;
-
     let mut choice = String::new();
     let mut episode_index: u16 = 0;
+
+    drop(ids);
+    drop(episodes);
 
     while choice != "quit" {
         let start_string = match choice.as_str() {
             "next" => episode_vec[episode_index as usize].to_string(),
             "previous" => episode_vec[episode_index as usize - 2].to_string(),
             "replay" => episode_vec[episode_index as usize - 1].to_string(),
-            _ => selection(&episode, "Select episode: ", true, is_not_rofi),
+            _ => selection(&episode, "Select episode: ", true, is_rofi),
         };
 
         let start: Vec<&str> = start_string.lines().collect();
         let end = start.last().unwrap().to_string();
 
-        episode_index = episode_vec.iter().position(|x| *x == start[0]).unwrap() as u16;
+        episode_index = episode_vec.iter().position(|x| **x == *start[0]).unwrap() as u16;
         drop(start);
         drop(start_string);
 
@@ -108,7 +119,7 @@ pub async fn allanime(
         let mut current_ep = "";
 
         while current_ep != end {
-            current_ep = episode_vec[episode_index as usize];
+            current_ep = &episode_vec[episode_index as usize];
 
             let mut vid = Vid {
                 title: format!("{} Episode {}", anime_name, current_ep),
@@ -116,7 +127,7 @@ pub async fn allanime(
             };
 
             let source: Value = {
-                let resp = get_episodes(id, current_ep, mode).await;
+                let resp = get_episodes(client, &id, current_ep, mode).await?;
                 serde_json::from_str(&resp).expect("Failed to derive json from episode response")
             };
 
@@ -127,7 +138,8 @@ pub async fn allanime(
                 for source in sources {
                     let name = source["sourceName"]
                         .as_str()
-                        .expect("sourceName wasn't found");
+                        .expect("sourceName wasn't found")
+                        .to_string();
 
                     let url = source["sourceUrl"]
                         .as_str()
@@ -146,29 +158,38 @@ pub async fn allanime(
                     }
                 }
             }
+            drop(source);
 
-            vid = get_streaming_link(source_name, source_url, provider, quality, vid).await;
+            vid =
+                get_streaming_link(client, source_name, source_url, provider, quality, vid).await?;
             sender.send(vid).await.expect("Failed to send link");
 
             episode_index += 1;
         }
 
         drop(sender);
-        play_task.await.expect("Play task panicked");
+        play_task.await.expect("Play task failed");
 
         if episode_index == 1 && episode_index == total_episodes {
-            choice = choice_selection("quit\nreplay", is_not_rofi);
+            choice = choice_selection("quit\nreplay", is_rofi);
         } else if episode_index == 1 {
-            choice = choice_selection("quit\nnext\nselect\nreplay", is_not_rofi);
+            choice = choice_selection("quit\nnext\nselect\nreplay", is_rofi);
         } else if episode_index == total_episodes {
-            choice = choice_selection("quit\nprevious\nselect\nreplay", is_not_rofi);
+            choice = choice_selection("quit\nprevious\nselect\nreplay", is_rofi);
         } else {
-            choice = choice_selection("quit\nnext\nprevious\nselect\nreplay", is_not_rofi);
+            choice = choice_selection("quit\nnext\nprevious\nselect\nreplay", is_rofi);
         }
     }
+
+    Ok(())
 }
 
-async fn search(query: &str, mode: &str, sort_by_top: bool) -> Box<str> {
+async fn search(
+    query: &str,
+    mode: &str,
+    sort_by_top: bool,
+    client: &HttpClient,
+) -> Result<Box<str>, Box<dyn Error>> {
     const SEARCH_GQL: &str = "query (
         $search: SearchInput
         $translationType: VaildTranslationTypeEnumType
@@ -209,10 +230,15 @@ async fn search(query: &str, mode: &str, sort_by_top: bool) -> Box<str> {
         byte_serialize(SEARCH_GQL.as_bytes()).collect::<String>()
     );
 
-    get_isahc(&link, USER_AGENT, REFERER).await
+    get_isahc(client, &link).await
 }
 
-async fn get_episodes(id: &str, episode_num: &str, mode: &str) -> Box<str> {
+async fn get_episodes(
+    client: &HttpClient,
+    id: &str,
+    episode_num: &str,
+    mode: &str,
+) -> Result<Box<str>, Box<dyn Error>> {
     const EPISODES_GQL: &str = "query ($showId: String!, $translationType: VaildTranslationTypeEnumType!, $episodeString: String!) {
     episode(
         showId: $showId
@@ -235,30 +261,32 @@ async fn get_episodes(id: &str, episode_num: &str, mode: &str) -> Box<str> {
         byte_serialize(EPISODES_GQL.as_bytes()).collect::<String>()
     );
 
-    get_isahc(&link, USER_AGENT, REFERER).await
+    get_isahc(client, &link).await
 }
 
 fn decrypt_allanime(source_url: &str) -> String {
-    const PASSWORD: u8 = 56;
-
     let decoded_link: String = hex::decode(&source_url[2..])
         .expect("Failed to decode hex")
         .into_iter()
-        .map(|segment| (segment ^ PASSWORD) as char)
+        .map(|segment| (segment ^ 56) as char)
         .collect();
 
-    decoded_link.replace("/apivtwo/clock?id=", ALLANIME_CLOCK_JSON)
+    decoded_link.replace(
+        "/apivtwo/clock?id=",
+        "https://allanime.day/apivtwo/clock.json?id=",
+    )
 }
 
 async fn get_streaming_link(
-    source_name: Vec<&str>,
+    client: &HttpClient,
+    source_name: Vec<String>,
     source_url: Vec<String>,
     provider: u8,
     mut quality: u16,
     mut vid: Vid,
-) -> Vid {
-    if provider == 1 && source_name.contains(&"Ak") {
-        let v = get_json("Ak", source_name, source_url).await;
+) -> Result<Vid, Box<dyn Error>> {
+    if provider == 1 && source_name.contains(&String::from("Ak")) {
+        let v = get_json(client, "Ak", source_name, source_url).await?;
 
         if let Some(vid_link) = v["links"][0]["rawUrls"]["vids"].as_array() {
             let mut vid_check = "";
@@ -302,10 +330,10 @@ async fn get_streaming_link(
                     .to_string(),
             );
         }
-    } else if { provider <= 2 } && source_name.contains(&"Default") {
+    } else if { provider <= 2 } && source_name.contains(&String::from("Default")) {
         let pro = "Default";
-        let v = get_json(pro, source_name, source_url).await;
-        let link = default_link(v, pro).into_boxed_str();
+        let v = get_json(client, pro, source_name, source_url).await?;
+        let link = default_link(v, pro);
 
         if quality == 0 || quality > 1080 {
             quality = 1080
@@ -326,53 +354,61 @@ async fn get_streaming_link(
                 Regex::new(r"https://repackager.wixmp.com/(.*/)[^/]*,([0-9]*p),(/mp4/file\.mp4)")
                     .unwrap()
             });
-            vid.vid_link = format!(
-                "https://{}{}{}",
-                &RE.captures(&link).unwrap()[1],
-                &RE.captures(&link).unwrap()[2],
-                &RE.captures(&link).unwrap()[3],
-            );
+
+            let cap = RE
+                .captures(&link)
+                .expect("Failed to get video link from wixmp");
+            vid.vid_link = format!("https://{}{}{}", &cap[1], &cap[2], &cap[3],);
         }
-    } else if { provider <= 3 } && source_name.contains(&"S-mp4") {
+    } else if { provider <= 3 } && source_name.contains(&String::from("S-mp4")) {
         let pro = "S-mp4";
-        let v = get_json(pro, source_name, source_url).await;
+        let v = get_json(client, pro, source_name, source_url).await?;
         vid.vid_link = default_link(v, pro);
-    } else if provider <= 4 && source_name.contains(&"Sak") {
+    } else if provider <= 4 && source_name.contains(&String::from("Sak")) {
         let pro = "Sak";
-        let v = get_json(pro, source_name, source_url).await;
+        let v = get_json(client, pro, source_name, source_url).await?;
         vid.vid_link = default_link(v, pro);
     } else {
         let pro = "Luf-mp4";
-        let v = get_json(pro, source_name, source_url).await;
+        let v = get_json(client, pro, source_name, source_url).await?;
         let link = default_link(v, pro).into_boxed_str();
 
-        let resp = get_isahc(&link, USER_AGENT, &link).await;
-        let mut line = String::new();
+        let resp = get_isahc(client, &link).await?;
+        let mut m3u8 = String::new();
 
         if quality != 0 {
             let re = Regex::new(&format!(r"(ep\..*\.{}\.m3u8)", quality)).unwrap();
             if let Some(captures) = re.captures(&resp) {
-                line = captures[1].to_string();
+                m3u8 = captures[1].to_string();
             }
         }
-        if vid.vid_link.is_empty() && line.is_empty() {
-            line = resp.lines().last().unwrap().to_string();
+        if vid.vid_link.is_empty() && m3u8.is_empty() {
+            m3u8 = resp.lines().last().unwrap().to_string();
         }
         let split_link = link.rsplit_once('/').unwrap().0;
-        vid.vid_link = format!("{}/{}", split_link, line);
+        vid.vid_link = format!("{}/{}", split_link, m3u8);
     }
-    vid
+
+    Ok(vid)
 }
 
-async fn get_json(provider: &str, source_name: Vec<&str>, source_url: Vec<String>) -> Value {
+async fn get_json(
+    client: &HttpClient,
+    provider: &str,
+    source_name: Vec<String>,
+    source_url: Vec<String>,
+) -> Result<Value, Box<dyn Error>> {
     let index = source_name
         .iter()
-        .position(|item| *item == provider)
+        .position(|item| item == provider)
         .unwrap();
+    let url = source_url[index].clone();
 
-    let resp = get_isahc(&source_url[index], USER_AGENT, REFERER).await;
+    drop(source_name);
+    drop(source_url);
 
-    serde_json::from_str(&resp).expect("Failed to derive json")
+    let resp = get_isahc(client, &url).await?;
+    Ok(serde_json::from_str(&resp).expect("Failed to derive json"))
 }
 
 fn default_link(v: Value, provider: &str) -> String {
@@ -385,6 +421,6 @@ fn default_link(v: Value, provider: &str) -> String {
     }
 }
 
-fn choice_selection(select: &str, is_not_rofi: bool) -> String {
-    selection(select, "Enter a choice", false, is_not_rofi).to_string()
+fn choice_selection(select: &str, is_rofi: bool) -> String {
+    selection(select, "Enter a choice: ", false, is_rofi)
 }
