@@ -104,7 +104,7 @@ eren -h
 
 ## Dependency
 
-- mpv (best media player)
+- mpv or mpv-android (best media player)
 - ffmpeg (merging video & audio)
 
 ## Optimal Dependency
