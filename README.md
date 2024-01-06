@@ -4,7 +4,7 @@ Stream & Download Cartoons & Animes
 
 # Install
 
-#### Linux/Mac
+#### Linux/Mac/Android
 
 - First of all install rust then
 
@@ -39,6 +39,15 @@ sudo cp "$CARGO_HOME"/bin/eren /usr/local/bin/
 ````sh
 export PATH="$CARGO_HOME/bin:$PATH"
 ````
+
+#### Only Android Termux
+
+- In your .zprofile, .bash_profile or .fish_profile ?
+
+````sh
+export TERMINFO='/data/data/com.termux/files/usr/share/terminfo'
+````
+
 ## Usage
 
 ````
