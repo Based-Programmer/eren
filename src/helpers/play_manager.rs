@@ -103,14 +103,24 @@ pub async fn play_manage(vid: Vid, todo: Todo) {
             }
         }
         Todo::GetLink => {
-            println!("{}", vid.vid_link);
+            let mut vid_link_printed = false;
 
             if let Some(audio_link) = vid.audio_link {
+                println!("\n{}", vid.vid_link);
                 println!("{}", audio_link);
+                vid_link_printed = true;
             }
 
             if let Some(sub_link) = vid.subtitle_link {
+                if !vid_link_printed {
+                    println!("\n{}", vid.vid_link);
+                }
                 println!("{}", sub_link);
+                vid_link_printed = true;
+            }
+
+            if !vid_link_printed {
+                println!("{}", vid.vid_link);
             }
         }
         Todo::Debug => println!("{vid:#?}"),

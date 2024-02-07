@@ -102,7 +102,7 @@ eren -s great pretender
 eren -h
 ````
 
-## Dependencies
+## Dependency
 
 - mpv or mpv-android (best media player)
 - ffmpeg (merging video & audio)

@@ -18,7 +18,7 @@ fn skim(selection: &str, prompt: &str, is_multi: bool) -> String {
             exit(1);
         });
 
-    let items = SkimItemReader::default().of_bufread(Cursor::new(selection.to_string()));
+    let items = SkimItemReader::default().of_bufread(Cursor::new(selection.to_owned()));
 
     Skim::run_with(&options, Some(items))
         .map(|out| {
@@ -62,7 +62,7 @@ fn rofi(selection: &str, prompt: &str, is_multi: bool) -> Result<String, Box<dyn
     let mut output = String::new();
 
     match process.stdout.unwrap().read_to_string(&mut output) {
-        Ok(_) => Ok(output.trim_end_matches('\n').to_string()),
+        Ok(_) => Ok(output.trim_end_matches('\n').to_owned()),
         Err(err) => Err(Box::new(err)),
     }
 }
