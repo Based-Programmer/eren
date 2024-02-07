@@ -4,6 +4,10 @@ Stream & Download Cartoons & Animes
 
 # Install
 
+#### Linux/Android
+
+- Get the binary from the [release page](https://github.com/Based-Programmer/eren/releases)
+
 #### Linux/Mac/Android
 
 - First of all install rust then
