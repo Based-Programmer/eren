@@ -1,8 +1,10 @@
 use crate::{Todo, Vid};
-use std::{env, process::Stdio};
-use tokio::{fs, process::Command};
+use std::{
+    env, fs,
+    process::{Command, Stdio},
+};
 
-pub async fn play_manage(vid: Vid, todo: Todo) {
+pub async fn play_manage(mut vid: Vid, todo: Todo) {
     match todo {
         Todo::Play => {
             let mut mpv_args = Vec::new();
@@ -13,6 +15,10 @@ pub async fn play_manage(vid: Vid, todo: Todo) {
 
             if let Some(sub_link) = vid.subtitle_link {
                 mpv_args.push(format!("--sub-file={}", sub_link))
+            }
+
+            if let Some(referrer) = vid.referrer {
+                mpv_args.push(format!("--referrer={referrer}"));
             }
 
             if env::consts::OS == "android" {
@@ -31,6 +37,7 @@ pub async fn play_manage(vid: Vid, todo: Todo) {
                 .args([
                     &vid.vid_link,
                     "--no-terminal",
+                    "--force-seekable",
                     "--force-window=immediate",
                     "--speed=1",
                     "--sub-visibility",
@@ -39,7 +46,6 @@ pub async fn play_manage(vid: Vid, todo: Todo) {
                 //.arg(format!("--user-agent={}", vid.user_agent))
                 //.arg(format!("--referrer={}", vid.referrer))
                 .output()
-                .await
                 .expect("Failed to execute mpv")
                 .status
                 .code()
@@ -50,13 +56,14 @@ pub async fn play_manage(vid: Vid, todo: Todo) {
             }
         }
         Todo::Download => {
+            vid.title = vid.title.replace(" /", "").replace('/', "");
+
             if vid.vid_link.ends_with(".m3u8") {
                 if Command::new("hls")
                     .args(["-n", "38"])
                     .args(["-o", &vid.title])
                     .arg(&vid.vid_link)
                     .status()
-                    .await
                     .expect("Failed to execute hls")
                     .success()
                 {
@@ -78,18 +85,15 @@ pub async fn play_manage(vid: Vid, todo: Todo) {
                     .args(["-c", "copy"])
                     .arg(format!("{}.mp4", vid.title))
                     .status()
-                    .await
                     .expect("Failed to execute ffmpeg")
                     .success()
                 {
                     println!("\nVideo & audio merged successfully");
 
                     fs::remove_file(vid_title)
-                        .await
                         .unwrap_or_else(|_| eprintln!("Failed to remove downloaded video"));
 
                     fs::remove_file(audio_title)
-                        .await
                         .unwrap_or_else(|_| eprintln!("Failed to remove downloaded audio"));
                 } else {
                     eprintln!("\nVideo & audio merge failed");
@@ -130,20 +134,26 @@ pub async fn play_manage(vid: Vid, todo: Todo) {
 async fn download(vid: &Vid, link: &str, types: &str, extension: &str) {
     println!("\nDownloading{}: {}", types, vid.title);
 
+    let mut aria_args = vec![format!("--out={}{}.{}", vid.title, types, extension)];
+
+    if let Some(referer) = vid.referrer {
+        aria_args.push(format!("--referer={referer}"));
+    }
+
     if Command::new("aria2c")
-        .arg(link)
-        .arg("--max-connection-per-server=16")
-        .arg("--max-concurrent-downloads=16")
-        .arg("--split=16")
-        .arg("--min-split-size=1M")
-        .arg("--check-certificate=false")
-        .arg("--summary-interval=0")
-        .arg("--download-result=hide")
-        .arg(format!("--out={}{}.{}", vid.title, types, extension))
+        .args(aria_args)
+        .args([
+            link,
+            "--max-connection-per-server=16",
+            "--max-concurrent-downloads=16",
+            "--split=16",
+            "--min-split-size=1M",
+            "--check-certificate=false",
+            "--summary-interval=0",
+            "--download-result=hide",
+        ])
         //.arg(format!("--user-agent={}", vid.user_agent))
-        //.arg(format!("--referer={}", vid.referrer))
         .status()
-        .await
         .expect("Failed to execute aria2c")
         .success()
     {

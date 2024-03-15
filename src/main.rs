@@ -1,15 +1,14 @@
 mod helpers;
 mod providers;
 
+use clap::{arg, command, value_parser, ArgAction::SetTrue};
 use helpers::{is_terminal::is_terminal, selection::selection};
 use providers::allanime::allanime;
 use std::{
-    env,
+    env::consts::OS,
     io::{stdin, stdout, Write},
     process::exit,
 };
-
-use clap::{arg, command, value_parser, ArgAction::SetTrue};
 
 #[derive(Default, Debug, Clone)]
 pub struct Vid {
@@ -17,8 +16,8 @@ pub struct Vid {
     vid_link: String,
     audio_link: Option<String>,
     subtitle_link: Option<String>,
+    referrer: Option<&'static str>,
     //user_agent: &'static str,
-    //referrer: &'static str,
 }
 
 /*
@@ -87,7 +86,8 @@ async fn main() {
             arg!(-p --provider <Provider> "Changes Provider")
                 .required(false)
                 .value_parser([
-                    "Ak", "Default", "S-mp4", "Sak", "Luf-mp4", "1", "2", "3", "4", "5",
+                    "Ak", "Yt-mp4", "Default", "S-mp4", "Sak", "Luf-mp4", "1", "2", "3", "4", "5",
+                    "6",
                 ]),
         )
         .arg(
@@ -116,16 +116,15 @@ async fn main() {
         sub = true;
     }
 
-    if matches.get_flag("debug") {
-        todo = Todo::Debug;
-    }
-
     if matches.get_flag("download") {
         todo = Todo::Download;
-    }
-
-    if matches.get_flag("get") {
+    } else if matches.get_flag("debug") {
+        todo = Todo::Debug;
+    } else if matches.get_flag("get") {
         todo = Todo::GetLink;
+    // provider 1 has separate audio & sub link & 2 has referer which cannot be passed from termux
+    } else if OS == "android" && provider < 3 {
+        provider = 3;
     }
 
     if matches.get_flag("rofi") {
@@ -173,10 +172,11 @@ async fn main() {
 
 fn provider_num(provider: &str) -> u8 {
     match provider {
-        "Default" => 2,
-        "S-mp4" => 3,
-        "Sak" => 4,
-        "Luf-mp4" => 5,
+        "Yt-mp4" => 2,
+        "Default" => 3,
+        "S-mp4" => 4,
+        "Sak" => 5,
+        "Luf-mp4" => 6,
         _ => 1,
     }
 }

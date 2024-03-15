@@ -81,7 +81,6 @@ eren -p=S-mp4 death note
 #### Rofi
 
  - you can execute eren from something like rofi or dmenu & rofi will spawn automatically
- 
  - or you can just execute it from the terminal using the normie way given below
     
  ````sh

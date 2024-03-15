@@ -4,10 +4,8 @@ use crate::{
 };
 
 use isahc::HttpClient;
-use once_cell::sync::Lazy;
-use regex::Regex;
 use serde_json::Value;
-use std::{error::Error, io::ErrorKind, process::exit};
+use std::{collections::HashMap, error::Error, io::ErrorKind, process::exit};
 use tokio::{sync::mpsc, task};
 use url::form_urlencoded::byte_serialize;
 
@@ -51,7 +49,7 @@ pub async fn allanime(
                 if let Some(name) = show["englishName"].as_str() {
                     anime_names.push(format!("{i} {name} ({available_ep} Episodes)"));
                 } else {
-                    let name = show["name"].as_str().expect("name wasn't found");
+                    let name = show["name"].as_str().expect("anime name wasn't found");
                     anime_names.push(format!("{i} {name} ({available_ep} Episodes)"));
                 }
 
@@ -75,10 +73,7 @@ pub async fn allanime(
     let selected = selection(&anime_names, "Select anime: ", false, is_rofi);
     drop(anime_names);
 
-    let (index, anime_name) = selected
-        .split_once(' ')
-        .expect("Failed to split index & anime name");
-
+    let (index, anime_name) = selected.split_once(' ').unwrap();
     let anime_name = anime_name.rsplit_once(" (").unwrap().0.to_owned();
     let index = index.parse::<u8>()?;
     let id = ids[index as usize].clone();
@@ -122,73 +117,65 @@ pub async fn allanime(
 
             let source = get_episodes(client, &id, current_ep, mode)?;
 
-            let mut vid = Vid::default();
+            let mut vid = Vid {
+                title: if let Some(mut ep_title) =
+                    source["data"]["episode"]["episodeInfo"]["notes"].as_str()
+                {
+                    ep_title = ep_title
+                        .split_once("<note-split>")
+                        .unwrap_or((ep_title, ""))
+                        .0;
 
-            if let Some(mut ep_title) = source["data"]["episode"]["episodeInfo"]["notes"].as_str() {
-                ep_title = ep_title
-                    .split_once("<note-split>")
-                    .unwrap_or((ep_title, ""))
-                    .0;
-
-                vid.title = if ep_title != "Untitled" {
-                    format!("{} Episode {} - {}", anime_name, current_ep, ep_title)
-                } else {
+                    if ep_title != "Untitled" {
+                        format!("{} Episode {} - {}", anime_name, current_ep, ep_title)
+                    } else {
+                        format!("{} Episode {}", anime_name, current_ep)
+                    }
+                } else if total_episodes > 1 {
                     format!("{} Episode {}", anime_name, current_ep)
-                };
-            } else if total_episodes > 1 {
-                vid.title = format!("{} Episode {}", anime_name, current_ep);
-            } else {
-                vid.title = anime_name.to_owned();
-            }
+                } else {
+                    anime_name.clone()
+                },
+                ..Default::default()
+            };
 
-            let mut source_url = Vec::new();
-            let mut source_name = Vec::new();
+            let mut source_name_url = HashMap::new();
 
             if let Some(sources) = source["data"]["episode"]["sourceUrls"].as_array() {
                 for source in sources {
-                    let name = source["sourceName"]
-                        .as_str()
-                        .expect("sourceName wasn't found");
+                    if let Some(name) = source["sourceName"].as_str() {
+                        if let Some(url) = source["sourceUrl"].as_str() {
+                            if matches!(
+                                name,
+                                "Yt-mp4" | "Default" | "S-mp4" | "Sak" | "Luf-mp4" | "Ak"
+                            ) {
+                                match decrypt_allanime(url) {
+                                    Ok(decoded_link) => {
+                                        let name_num: u8 = match name {
+                                            "Ak" => 1,
+                                            "Yt-mp4" => 2,
+                                            "Default" => 3,
+                                            "S-mp4" => 4,
+                                            "Sak" => 5,
+                                            "Luf-mp4" => 6,
+                                            _ => unreachable!(),
+                                        };
 
-                    let url = source["sourceUrl"]
-                        .as_str()
-                        .expect("sourceUrl wasn't found");
-
-                    if name == "Default"
-                        || name == "S-mp4"
-                        || name == "Sak"
-                        || name == "Luf-mp4"
-                        || name == "Ak"
-                    {
-                        match decrypt_allanime(url) {
-                            Ok(decoded_link) => source_url.push(decoded_link),
-                            Err(err) => eprintln!("{RED}Error:{RESET} {err}"),
-                        }
-
-                        let name_num: u8 = match name {
-                            "Ak" => 1,
-                            "Default" => 2,
-                            "S-mp4" => 3,
-                            "Sak" => 4,
-                            "Luf-mp4" => 5,
-                            _ => 0,
-                        };
-
-                        if name_num != 0 {
-                            source_name.push(name_num);
+                                        source_name_url.insert(name_num, decoded_link);
+                                    }
+                                    Err(_) => eprintln!("{RED}Failed to decrypt source url from {name} provider{RESET}"),
+                                }
+                            }
                         }
                     }
                 }
             }
             drop(source);
 
-            vid = get_streaming_link(client, &source_name, &source_url, provider, quality, vid)?;
-
-            drop(source_name);
-            drop(source_url);
+            get_streaming_link(client, &source_name_url, provider, quality, &mut vid)?;
+            drop(source_name_url);
 
             sender.send(vid).await?;
-
             episode_index += 1;
         }
 
@@ -291,33 +278,39 @@ fn get_episodes(
     get_isahc_json(client, &link)
 }
 
-fn decrypt_allanime(source_url: &str) -> Result<String, Box<dyn Error>> {
+fn decrypt_allanime(source_url: &str) -> Result<Box<str>, Box<dyn Error>> {
     let decoded_link: String = hex::decode(&source_url[2..])?
         .into_iter()
         .map(|segment| (segment ^ 56) as char)
         .collect();
 
-    Ok(decoded_link.replace(
-        "/apivtwo/clock?id=",
-        "https://allanime.day/apivtwo/clock.json?id=",
-    ))
+    Ok(decoded_link
+        .replace(
+            "/apivtwo/clock?id=",
+            "https://allanime.day/apivtwo/clock.json?id=",
+        )
+        .into())
 }
 
 fn get_streaming_link(
     client: &HttpClient,
-    source_name: &[u8],
-    source_url: &[String],
+    source_name_url: &HashMap<u8, Box<str>>,
     mut provider: u8,
-    mut quality: u16,
-    mut vid: Vid,
-) -> Result<Vid, Box<dyn Error>> {
+    quality: u16,
+    vid: &mut Vid,
+) -> Result<(), Box<dyn Error>> {
     let mut count: u8 = 0;
 
+    *vid = Vid {
+        title: vid.title.clone(),
+        ..Default::default()
+    };
+
     while vid.vid_link.is_empty() && count < 5 {
-        if source_name.contains(&provider) {
+        if source_name_url.contains_key(&provider) {
             match provider {
                 1 => {
-                    let v = get_json(client, provider, source_name, source_url)?;
+                    let v = get_json(client, provider, source_name_url)?;
 
                     if let Some(vid_link) = v["links"][0]["rawUrls"]["vids"].as_array() {
                         if quality != 0 {
@@ -332,18 +325,17 @@ fn get_streaming_link(
                             }
                         }
 
-                        if vid.vid_link.is_empty() {
-                            vid.vid_link = vid_link[0]["url"]
-                                .as_str()
-                                .expect("Failed to get Ak best video link")
-                                .to_owned();
+                        match vid_link[0]["url"].as_str() {
+                            Some(vid_link) => vid.vid_link = vid_link.to_owned(),
+                            None => eprintln!("Failed to get best video link from Ak provider"),
                         }
+
                         vid.vid_link = vid.vid_link.trim_matches('"').to_owned();
 
                         vid.audio_link = Some(
                             v["links"][0]["rawUrls"]["audios"][0]["url"]
                                 .as_str()
-                                .expect("Failed to get Ak audio link")
+                                .expect("Failed to get audio link from Ak provider")
                                 .trim_matches('"')
                                 .to_owned(),
                         );
@@ -351,76 +343,87 @@ fn get_streaming_link(
                         vid.subtitle_link = Some(
                             v["links"][0]["subtitles"][0]["src"]
                                 .as_str()
-                                .expect("Failed to get Ak subtitle link")
+                                .expect("Failed to get subtitle link from Ak provider")
                                 .trim_matches('"')
                                 .to_owned(),
                         );
                     }
                 }
                 2 => {
-                    let v = get_json(client, provider, source_name, source_url)?;
-                    if let Some(link) = v["links"][0]["link"].as_str() {
-                        if quality == 0 || quality > 1080 {
-                            quality = 1080
-                        }
-
-                        let re = Regex::new(&format!(
-                            r"https://repackager.wixmp.com/(.*/)[^/]*{}p[^/]*(/mp4/file\.mp4)",
-                            quality
-                        ))?;
-
-                        if let Some(captures) = re.captures(link) {
-                            vid.vid_link =
-                                format!("https://{}{}p{}", &captures[1], quality, &captures[2]);
-                        }
-
-                        if vid.vid_link.is_empty() {
-                            static RE: Lazy<Regex> = Lazy::new(|| {
-                                Regex::new(
-                            r"https://repackager.wixmp.com/(.*/)[^/]*,([0-9]*p),(/mp4/file\.mp4)",
-                        )
-                        .unwrap()
-                            });
-
-                            let cap = RE
-                                .captures(link)
-                                .expect("Failed to get video link from wixmp");
-                            vid.vid_link = format!("https://{}{}{}", &cap[1], &cap[2], &cap[3],);
-                        }
+                    if quality == 0 || quality == 1080 || !source_name_url.contains_key(&3) {
+                        vid.vid_link = source_name_url.get(&provider).unwrap().to_string();
+                        vid.referrer = Some("https://allanime.to");
                     }
                 }
                 3 => {
-                    let v = get_json(client, provider, source_name, source_url)?;
-                    vid.vid_link = default_link(v);
-                }
-                4 => {
-                    let v = get_json(client, provider, source_name, source_url)?;
-                    vid.vid_link = default_link(v);
-                }
-                _ => {
-                    let v = get_json(client, provider, source_name, source_url)?;
-                    if let Some(link) = v["links"][0]["link"].as_str() {
-                        let resp = get_isahc(client, link)?;
-                        let mut m3u8 = String::new();
+                    let v = get_json(client, provider, source_name_url)?;
 
-                        if quality != 0 {
-                            let re = Regex::new(&format!(r"(ep\..*\.{}\.m3u8)", quality))?;
-                            if let Some(captures) = re.captures(&resp) {
-                                m3u8 = captures[1].to_owned();
+                    if let Some(link) = v["links"][0]["link"].as_str() {
+                        let mut qualities: Vec<&str> = link
+                            .trim_start_matches("https://repackager.wixmp.com/")
+                            .split(',')
+                            .collect();
+                        qualities.pop();
+                        let vid_base_url = qualities.remove(0);
+                        let mut selected_res = 0;
+
+                        for res in qualities {
+                            if let Ok(res) = res.trim_end_matches('p').parse::<u16>() {
+                                if quality == res {
+                                    selected_res = res;
+                                    break;
+                                }
+
+                                if res > selected_res {
+                                    selected_res = res;
+                                }
                             }
                         }
 
-                        if vid.vid_link.is_empty() && m3u8.is_empty() {
-                            m3u8 = resp.lines().last().unwrap().to_owned();
+                        if selected_res != 0 {
+                            vid.vid_link =
+                                format!("https://{vid_base_url}{selected_res}p/mp4/file.mp4")
                         }
-
-                        let split_link = link.rsplit_once('/').unwrap().0;
-                        vid.vid_link = format!("{}/{}", split_link, m3u8);
                     }
                 }
+                4 => {
+                    let v = get_json(client, provider, source_name_url)?;
+                    vid.vid_link = default_link(v);
+                }
+                5 => {
+                    let v = get_json(client, provider, source_name_url)?;
+                    vid.vid_link = default_link(v);
+                }
+                6 => {
+                    let v = get_json(client, provider, source_name_url)?;
+
+                    if let Some(link) = v["links"][0]["link"].as_str() {
+                        if link.ends_with(".original.m3u8") {
+                            vid.vid_link = link.to_owned();
+                        } else {
+                            let resp = get_isahc(client, link)?;
+                            let mut m3u8 = "";
+
+                            if quality != 0 {
+                                for hls in resp.lines() {
+                                    m3u8 = hls;
+                                    if hls.ends_with(&format!("{quality}.m3u8")) {
+                                        break;
+                                    }
+                                }
+                            } else {
+                                m3u8 = resp.lines().last().unwrap();
+                            }
+
+                            let split_link = link.rsplit_once('/').unwrap().0;
+                            vid.vid_link = format!("{}/{}", split_link, m3u8);
+                        }
+                    }
+                }
+                _ => unreachable!(),
             }
         }
-        provider = provider % 5 + 1;
+        provider = provider % 6 + 1;
         count += 1;
     }
 
@@ -430,24 +433,17 @@ fn get_streaming_link(
             "No video link was found",
         )))
     } else {
-        Ok(vid)
+        Ok(())
     }
 }
 
 fn get_json(
     client: &HttpClient,
     provider: u8,
-    source_name: &[u8],
-    source_url: &[String],
+    source_name_url: &HashMap<u8, Box<str>>,
 ) -> Result<Value, Box<dyn Error>> {
-    let index = source_name
-        .iter()
-        .position(|&item| item == provider)
-        .expect("No supported provider");
-
-    let url = source_url[index].clone();
-
-    get_isahc_json(client, &url)
+    let link = source_name_url.get(&provider).unwrap();
+    get_isahc_json(client, link)
 }
 
 fn default_link(v: Value) -> String {
