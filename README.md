@@ -56,7 +56,7 @@ export TERMINFO='/data/data/com.termux/files/usr/share/terminfo'
 ## Usage
 
 ````
-eren <argument> <search query>
+eren <args> <search query>
 ````
 
 #### Example
@@ -70,7 +70,7 @@ eren --debug demon slayer
 - Change Provider
 
 ````sh
-eren -p=S-mp4 death note
+eren -p Luf-mp4 death note
 ````
 
 ####  Multi-select
