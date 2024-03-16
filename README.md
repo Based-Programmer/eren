@@ -8,6 +8,7 @@ Stream & Download Cartoons & Animes
 
 - Get the binary from the [release page](https://github.com/Based-Programmer/eren/releases)
 
+## Build
 #### Linux/Mac/Android
 
 - First of all install rust then
