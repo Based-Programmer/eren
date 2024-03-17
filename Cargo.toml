@@ -2,9 +2,9 @@
 name = "eren"
 authors = ["BASED"]
 license = "GPL-3.0"
-version = "0.2.4"
+version = "0.2.5"
 edition = "2021"
-description = "Stream & Download Cartoons & Animes"
+description = "Stream & Download Animes from your terminal"
 keywords = ["anime", "allanime", "gogoanime", "cli", "scraper"]
 repository = "https://github.com/Based-Programmer/eren"
 

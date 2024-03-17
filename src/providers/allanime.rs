@@ -56,9 +56,16 @@ pub async fn allanime(
                 if let Some(ep) = show["availableEpisodesDetail"][mode].as_array() {
                     let episode: Box<[Box<str>]> = ep
                         .iter()
-                        .map(|episode| episode.as_str().unwrap().trim_matches('"').into())
+                        .map(|episode| {
+                            episode
+                                .as_str()
+                                .expect("Failed to get episode list")
+                                .trim_matches('"')
+                                .into()
+                        })
                         .rev()
                         .collect();
+
                     episodes.push(episode);
                 }
             }
@@ -306,7 +313,7 @@ fn get_streaming_link(
         ..Default::default()
     };
 
-    while vid.vid_link.is_empty() && count < 5 {
+    while vid.vid_link.is_empty() && count < 6 {
         if source_name_url.contains_key(&provider) {
             match provider {
                 1 => {
@@ -401,7 +408,10 @@ fn get_streaming_link(
                         if link.ends_with(".original.m3u8") {
                             vid.vid_link = link.to_owned();
                         } else {
-                            let resp = get_isahc(client, link)?;
+                            let link: Box<str> = link.into();
+                            drop(v);
+
+                            let resp = get_isahc(client, &link)?;
                             let mut m3u8 = "";
 
                             if quality != 0 {
