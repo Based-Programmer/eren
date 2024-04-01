@@ -1,17 +1,31 @@
 use crate::{
     helpers::{play_manager::play_manage, reqwests::*, selection::selection},
-    Todo, Vid,
+    Todo, Vid, RED, RESET,
 };
 
 use isahc::HttpClient;
-use serde_json::Value;
-use std::{collections::HashMap, error::Error, io::ErrorKind, process::exit};
+use serde::Deserialize;
+use serde_json::{from_str, Value};
+use std::{
+    collections::HashMap, env::consts::OS, error::Error, fs, io::ErrorKind::InvalidInput,
+    process::exit,
+};
 use tokio::{sync::mpsc, task};
 use url::form_urlencoded::byte_serialize;
 
+#[derive(Deserialize, Debug)]
+struct Subtitle {
+    body: Vec<Content>,
+}
+
+#[derive(Deserialize, Debug)]
+struct Content {
+    from: f32,
+    to: f32,
+    content: String,
+}
+
 const ALLANIME_API: &str = "https://api.allanime.day/api";
-const RED: &str = "\u{1b}[31m";
-const RESET: &str = "\u{1b}[0m";
 
 pub async fn allanime(
     query: &str,
@@ -292,9 +306,10 @@ fn decrypt_allanime(source_url: &str) -> Result<Box<str>, Box<dyn Error>> {
         .collect();
 
     Ok(decoded_link
-        .replace(
+        .replacen(
             "/apivtwo/clock?id=",
             "https://allanime.day/apivtwo/clock.json?id=",
+            1,
         )
         .into())
 }
@@ -332,9 +347,11 @@ fn get_streaming_link(
                             }
                         }
 
-                        match vid_link[0]["url"].as_str() {
-                            Some(vid_link) => vid.vid_link = vid_link.to_owned(),
-                            None => eprintln!("Failed to get best video link from Ak provider"),
+                        if vid.vid_link.is_empty() {
+                            match vid_link[0]["url"].as_str() {
+                                Some(vid_link) => vid.vid_link = vid_link.to_owned(),
+                                None => eprintln!("Failed to get best video link from Ak provider"),
+                            }
                         }
 
                         vid.vid_link = vid.vid_link.trim_matches('"').to_owned();
@@ -347,17 +364,68 @@ fn get_streaming_link(
                                 .to_owned(),
                         );
 
-                        vid.subtitle_link = Some(
-                            v["links"][0]["subtitles"][0]["src"]
+                        let subs = {
+                            let subtitle_link = v["links"][0]["subtitles"][0]["src"]
                                 .as_str()
                                 .expect("Failed to get subtitle link from Ak provider")
                                 .trim_matches('"')
-                                .to_owned(),
-                        );
+                                .replacen("https://allanime.pro/", "https://allanime.day/", 1)
+                                .into_boxed_str();
+
+                            drop(v);
+
+                            let sub_resp = get_isahc(client, &subtitle_link)?;
+
+                            match from_str::<Subtitle>(&sub_resp) {
+                                Ok(subtitle) => {
+                                    let mut subs = String::from(
+"[Script Info]
+ScriptType: v4.00+
+WrapStyle: 0
+ScaledBorderAndShadow: yes
+YCbCr Matrix: TV.709
+PlayResX: 1920
+PlayResY: 1080
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Noto Sans,90,&H00FFFFFF,&H000000FF,&H00002208,&H80000000,-1,0,0,0,100,100,0,0,1,5,1.5,2,0,0,65,1
+Style: Default Above,Noto Sans,80,&H00FFFFFF,&H000000FF,&H00002208,&H80000000,-1,0,0,0,100,100,0,0,1,5,1.5,8,0,0,65,1
+Style: 5-normal,Noto Sans,60,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,5,10,10,10,1
+Style: 6-normal,Noto Sans,60,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,6,10,10,10,1
+Style: 4-normal,Noto Sans,60,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,4,10,10,10,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text");
+
+                                    for content in subtitle.body {
+                                        subs.push_str(&format!(
+                                            "\nDialogue: 0,{},{},Default,,0,0,0,,{}",
+                                            format_timestamp(content.from),
+                                            format_timestamp(content.to),
+                                            content.content.replace('\n', "\\n")
+                                        ));
+                                    }
+
+                                    subs.into_boxed_str()
+                                }
+                                Err(_) => sub_resp,
+                            }
+                        };
+
+                        let tmp_path = if OS == "android" {
+                            "/data/data/com.termux/files/usr/tmp/"
+                        } else {
+                            "/tmp/"
+                        };
+
+                        let path = format!("{}{}.ass", tmp_path, vid.title);
+                        fs::write(&path, &*subs)?;
+                        vid.subtitle_path = Some(path);
                     }
                 }
                 2 => {
-                    if quality == 0 || quality == 1080 || !source_name_url.contains_key(&3) {
+                    if matches!(quality, 0 | 1080) || !source_name_url.contains_key(&3) {
                         vid.vid_link = source_name_url.get(&provider).unwrap().to_string();
                         vid.referrer = Some("https://allanime.to");
                     }
@@ -371,6 +439,7 @@ fn get_streaming_link(
                             .split(',')
                             .collect();
                         qualities.pop();
+
                         let vid_base_url = qualities.remove(0);
                         let mut selected_res = 0;
 
@@ -393,13 +462,11 @@ fn get_streaming_link(
                         }
                     }
                 }
-                4 => {
+                4 | 5 => {
                     let v = get_json(client, provider, source_name_url)?;
-                    vid.vid_link = default_link(v);
-                }
-                5 => {
-                    let v = get_json(client, provider, source_name_url)?;
-                    vid.vid_link = default_link(v);
+                    if let Some(link) = v["links"][0]["link"].as_str() {
+                        vid.vid_link = link.to_owned();
+                    }
                 }
                 6 => {
                     let v = get_json(client, provider, source_name_url)?;
@@ -439,12 +506,26 @@ fn get_streaming_link(
 
     if vid.vid_link.is_empty() {
         Err(Box::new(std::io::Error::new(
-            ErrorKind::InvalidInput,
+            InvalidInput,
             "No video link was found",
         )))
     } else {
         Ok(())
     }
+}
+
+fn format_timestamp(seconds: f32) -> String {
+    let whole_seconds = seconds.trunc() as i32;
+    let milliseconds = ((seconds - whole_seconds as f32) * 100.0).round() as i32;
+
+    let hours = whole_seconds / 3600;
+    let minutes = (whole_seconds % 3600) / 60;
+    let seconds = whole_seconds % 60;
+
+    format!(
+        "{:02}:{:02}:{:02}.{:02}",
+        hours, minutes, seconds, milliseconds
+    )
 }
 
 fn get_json(
@@ -454,13 +535,6 @@ fn get_json(
 ) -> Result<Value, Box<dyn Error>> {
     let link = source_name_url.get(&provider).unwrap();
     get_isahc_json(client, link)
-}
-
-fn default_link(v: Value) -> String {
-    v["links"][0]["link"]
-        .as_str()
-        .unwrap_or_default()
-        .to_owned()
 }
 
 fn choice_selection(select: &str, is_rofi: bool) -> String {

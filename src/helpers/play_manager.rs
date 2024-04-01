@@ -1,4 +1,4 @@
-use crate::{Todo, Vid};
+use crate::{Todo, Vid, RED, RESET, YELLOW};
 use std::{
     env, fs,
     process::{Command, Stdio},
@@ -13,8 +13,8 @@ pub async fn play_manage(mut vid: Vid, todo: Todo) {
                 mpv_args.push(format!("--audio-file={}", audio_link))
             }
 
-            if let Some(sub_link) = vid.subtitle_link {
-                mpv_args.push(format!("--sub-file={}", sub_link))
+            if let Some(sub_file) = vid.subtitle_path {
+                mpv_args.push(format!("--sub-file={}", sub_file))
             }
 
             if let Some(referrer) = vid.referrer {
@@ -52,7 +52,7 @@ pub async fn play_manage(mut vid: Vid, todo: Todo) {
                 .unwrap()
                 == 2
             {
-                eprintln!("Faulty video link");
+                eprintln!("{RED}Faulty video link{RESET}");
             }
         }
         Todo::Download => {
@@ -64,46 +64,58 @@ pub async fn play_manage(mut vid: Vid, todo: Todo) {
                     .args(["-o", &vid.title])
                     .arg(&vid.vid_link)
                     .status()
-                    .expect("Failed to execute hls")
+                    .expect(
+                        "Failed to execute hls
+                        Copy the script from https://github.com/CoolnsX/hls_downloader/blob/main/hls &
+                        move it to your $PATH",
+                    )
                     .success()
                 {
-                    println!("\nDownload Completed: {}", vid.title);
+                    println!("{}\nDownload Completed: {}{}", YELLOW, vid.title, RESET);
                 } else {
-                    eprintln!("\nDownload failed {}", vid.title);
+                    eprintln!("{}\nDownload failed {}{}", RED, vid.title, RESET);
                 }
             } else if let Some(audio_link) = &vid.audio_link {
                 download(&vid, &vid.vid_link, " video", "mp4").await;
-
                 download(&vid, audio_link, " audio", "mp3").await;
 
                 let vid_title = format!("{} video.{}", vid.title, "mp4");
                 let audio_title = format!("{} audio.{}", vid.title, "mp3");
+                let mut ffmpeg_args = vec!["-i", &vid_title, "-i", &audio_title];
+
+                let vid_ext = if let Some(sub_file) = &vid.subtitle_path {
+                    ffmpeg_args.extend_from_slice(&["-i", sub_file, "-c:s", "ass"]);
+                    "mkv"
+                } else {
+                    "mp4"
+                };
+
+                ffmpeg_args.extend_from_slice(&[
+                    "-map", "0:v", "-map", "1:a", "-map", "2:s", "-c:v", "copy", "-c:a", "copy",
+                ]);
 
                 if Command::new("ffmpeg")
-                    .args(["-i", &vid_title])
-                    .args(["-i", &audio_title])
-                    .args(["-c", "copy"])
-                    .arg(format!("{}.mp4", vid.title))
-                    .status()
+                    .args(ffmpeg_args)
+                    .arg(format!("{}.{}", vid.title, vid_ext))
+                    .output()
                     .expect("Failed to execute ffmpeg")
+                    .status
                     .success()
                 {
-                    println!("\nVideo & audio merged successfully");
+                    println!("{YELLOW}Video & audio merged successfully{RESET}");
 
-                    fs::remove_file(vid_title)
-                        .unwrap_or_else(|_| eprintln!("Failed to remove downloaded video"));
+                    fs::remove_file(vid_title).unwrap_or_else(|_| {
+                        eprintln!("{RED}Failed to remove downloaded video{RESET}")
+                    });
 
-                    fs::remove_file(audio_title)
-                        .unwrap_or_else(|_| eprintln!("Failed to remove downloaded audio"));
+                    fs::remove_file(audio_title).unwrap_or_else(|_| {
+                        eprintln!("{RED}Failed to remove downloaded audio{RESET}")
+                    });
                 } else {
-                    eprintln!("\nVideo & audio merge failed");
+                    eprintln!("{RED}Video & audio merge failed{RESET}");
                 }
             } else {
                 download(&vid, &vid.vid_link, "", "mp4").await;
-            }
-
-            if let Some(sub_link) = &vid.subtitle_link {
-                download(&vid, sub_link, " subtitle", "srt").await;
             }
         }
         Todo::GetLink => {
@@ -115,11 +127,11 @@ pub async fn play_manage(mut vid: Vid, todo: Todo) {
                 vid_link_printed = true;
             }
 
-            if let Some(sub_link) = vid.subtitle_link {
+            if let Some(sub_file) = vid.subtitle_path {
                 if !vid_link_printed {
                     println!("\n{}", vid.vid_link);
                 }
-                println!("{}", sub_link);
+                println!("{}", sub_file);
                 vid_link_printed = true;
             }
 
@@ -132,7 +144,7 @@ pub async fn play_manage(mut vid: Vid, todo: Todo) {
 }
 
 async fn download(vid: &Vid, link: &str, types: &str, extension: &str) {
-    println!("\nDownloading{}: {}", types, vid.title);
+    println!("{}\nDownloading{}:{} {}", YELLOW, types, RESET, vid.title);
 
     let mut aria_args = vec![format!("--out={}{}.{}", vid.title, types, extension)];
 
@@ -157,8 +169,8 @@ async fn download(vid: &Vid, link: &str, types: &str, extension: &str) {
         .expect("Failed to execute aria2c")
         .success()
     {
-        println!("\nDownloaded successfully");
+        println!("{YELLOW}\nDownloaded successfully{RESET}");
     } else {
-        eprintln!("\nDownload Failed");
+        eprintln!("{RED}\nDownload Failed{RESET}");
     }
 }

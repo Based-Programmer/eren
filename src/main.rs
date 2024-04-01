@@ -15,7 +15,7 @@ pub struct Vid {
     title: String,
     vid_link: String,
     audio_link: Option<String>,
-    subtitle_link: Option<String>,
+    subtitle_path: Option<String>,
     referrer: Option<&'static str>,
     //user_agent: &'static str,
 }
@@ -80,7 +80,9 @@ async fn main() {
                 -q --quality <Resolution> "Sets desired resolution"
             )
             .required(false)
-            .value_parser(value_parser!(String)),
+            .value_parser([
+                "2160p", "1080p", "720p", "480p", "360p", "2160", "1080", "720", "480", "360",
+            ]),
         )
         .arg(
             arg!(-p --provider <Provider> "Changes Provider")
@@ -172,11 +174,12 @@ async fn main() {
 
 fn provider_num(provider: &str) -> u8 {
     match provider {
+        "Ak" => 1,
         "Yt-mp4" => 2,
         "Default" => 3,
         "S-mp4" => 4,
         "Sak" => 5,
         "Luf-mp4" => 6,
-        _ => 1,
+        _ => unreachable!(),
     }
 }
