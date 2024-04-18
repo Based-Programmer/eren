@@ -55,7 +55,7 @@ fn rofi(selection: &str, prompt: &str, is_multi: bool) -> Result<String, Box<dyn
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
-        .expect("Rofi not installed");
+        .expect("Failed to execute rofi");
 
     process.stdin.unwrap().write_all(selection.as_bytes())?;
 

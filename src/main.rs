@@ -2,7 +2,7 @@ mod helpers;
 mod providers;
 
 use clap::{arg, command, value_parser, ArgAction::SetTrue};
-use helpers::{is_terminal::is_terminal, selection::selection};
+use helpers::{is_terminal::is_terminal, provider_num::provider_num, selection::selection};
 use providers::allanime::allanime;
 use std::{
     env::consts::OS,
@@ -88,7 +88,7 @@ async fn main() {
             arg!(-p --provider <Provider> "Changes Provider")
                 .required(false)
                 .value_parser([
-                    "Ak", "Yt-mp4", "Default", "S-mp4", "Sak", "Luf-mp4", "1", "2", "3", "4", "5",
+                    "Ak", "Default", "Sak", "S-mp4", "Luf-mp4", "Yt-mp4", "1", "2", "3", "4", "5",
                     "6",
                 ]),
         )
@@ -125,8 +125,8 @@ async fn main() {
     } else if matches.get_flag("get") {
         todo = Todo::GetLink;
     // provider 1 has separate audio & sub link & 2 has referer which cannot be passed from termux
-    } else if OS == "android" && provider < 3 {
-        provider = 3;
+    } else if OS == "android" && matches!(provider, 1 | 6) {
+        provider = 2;
     }
 
     if matches.get_flag("rofi") {
@@ -169,17 +169,5 @@ async fn main() {
 
     if let Err(err) = allanime(&query, todo, provider, quality, sub, is_rofi, sort_by_top).await {
         println!("{RED}Error:{RESET} {err}");
-    }
-}
-
-fn provider_num(provider: &str) -> u8 {
-    match provider {
-        "Ak" => 1,
-        "Yt-mp4" => 2,
-        "Default" => 3,
-        "S-mp4" => 4,
-        "Sak" => 5,
-        "Luf-mp4" => 6,
-        _ => unreachable!(),
     }
 }

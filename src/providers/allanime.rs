@@ -1,8 +1,9 @@
 use crate::{
-    helpers::{play_manager::play_manage, reqwests::*, selection::selection},
+    helpers::{
+        play_manager::play_manage, provider_num::provider_num, reqwests::*, selection::selection,
+    },
     Todo, Vid, RED, RESET,
 };
-
 use isahc::HttpClient;
 use serde::Deserialize;
 use serde_json::{from_str, Value};
@@ -95,7 +96,7 @@ pub async fn allanime(
     drop(anime_names);
 
     let (index, anime_name) = selected.split_once(' ').unwrap();
-    let anime_name = anime_name.rsplit_once(" (").unwrap().0.to_owned();
+    let anime_name: Box<str> = anime_name.rsplit_once(" (").unwrap().0.into();
     let index = index.parse::<u8>()?;
     let id = ids[index as usize].clone();
     let episode = episodes[index as usize].join("\n").into_boxed_str();
@@ -155,7 +156,7 @@ pub async fn allanime(
                 } else if total_episodes > 1 {
                     format!("{} Episode {}", anime_name, current_ep)
                 } else {
-                    anime_name.clone()
+                    anime_name.to_string()
                 },
                 ..Default::default()
             };
@@ -168,21 +169,12 @@ pub async fn allanime(
                         if let Some(url) = source["sourceUrl"].as_str() {
                             if matches!(
                                 name,
-                                "Yt-mp4" | "Default" | "S-mp4" | "Sak" | "Luf-mp4" | "Ak"
+                                "Ak" | "Default" | "Sak" | "S-mp4" | "Luf-mp4" | "Yt-mp4"
                             ) {
                                 match decrypt_allanime(url) {
                                     Ok(decoded_link) => {
-                                        let name_num: u8 = match name {
-                                            "Ak" => 1,
-                                            "Yt-mp4" => 2,
-                                            "Default" => 3,
-                                            "S-mp4" => 4,
-                                            "Sak" => 5,
-                                            "Luf-mp4" => 6,
-                                            _ => unreachable!(),
-                                        };
-
-                                        source_name_url.insert(name_num, decoded_link);
+                                        let provider_num =  provider_num(name);
+                                        source_name_url.insert(provider_num, decoded_link);
                                     }
                                     Err(_) => eprintln!("{RED}Failed to decrypt source url from {name} provider{RESET}"),
                                 }
@@ -254,12 +246,7 @@ fn search(
         sort, query, mode,
     );
 
-    let link = format!(
-        "{}?variables={}&query={}",
-        ALLANIME_API,
-        byte_serialize(variables.as_bytes()).collect::<String>(),
-        byte_serialize(SEARCH_GQL.as_bytes()).collect::<String>()
-    );
+    let link = allanime_api_link(&variables, SEARCH_GQL);
 
     get_isahc_json(client, &link)
 }
@@ -289,14 +276,19 @@ fn get_episodes(
         id, mode, episode_num
     );
 
-    let link = format!(
+    let link = allanime_api_link(&variables, EPISODES_GQL);
+
+    get_isahc_json(client, &link)
+}
+
+fn allanime_api_link(variables: &str, query: &str) -> Box<str> {
+    format!(
         "{}?variables={}&query={}",
         ALLANIME_API,
         byte_serialize(variables.as_bytes()).collect::<String>(),
-        byte_serialize(EPISODES_GQL.as_bytes()).collect::<String>()
-    );
-
-    get_isahc_json(client, &link)
+        byte_serialize(query.as_bytes()).collect::<String>()
+    )
+    .into()
 }
 
 fn decrypt_allanime(source_url: &str) -> Result<Box<str>, Box<dyn Error>> {
@@ -330,10 +322,15 @@ fn get_streaming_link(
 
     while vid.vid_link.is_empty() && count < 6 {
         if source_name_url.contains_key(&provider) {
+            let v = if provider != 6 {
+                let link = source_name_url.get(&provider).unwrap();
+                get_isahc_json(client, link)?
+            } else {
+                Value::Null
+            };
+
             match provider {
                 1 => {
-                    let v = get_json(client, provider, source_name_url)?;
-
                     if let Some(vid_link) = v["links"][0]["rawUrls"]["vids"].as_array() {
                         if quality != 0 {
                             for video in vid_link {
@@ -425,14 +422,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"
                     }
                 }
                 2 => {
-                    if matches!(quality, 0 | 1080) || !source_name_url.contains_key(&3) {
-                        vid.vid_link = source_name_url.get(&provider).unwrap().to_string();
-                        vid.referrer = Some("https://allanime.to");
-                    }
-                }
-                3 => {
-                    let v = get_json(client, provider, source_name_url)?;
-
                     if let Some(link) = v["links"][0]["link"].as_str() {
                         let mut qualities: Vec<&str> = link
                             .trim_start_matches("https://repackager.wixmp.com/")
@@ -462,15 +451,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"
                         }
                     }
                 }
-                4 | 5 => {
-                    let v = get_json(client, provider, source_name_url)?;
+                3 | 4 => {
                     if let Some(link) = v["links"][0]["link"].as_str() {
                         vid.vid_link = link.to_owned();
                     }
                 }
-                6 => {
-                    let v = get_json(client, provider, source_name_url)?;
-
+                5 => {
                     if let Some(link) = v["links"][0]["link"].as_str() {
                         if link.ends_with(".original.m3u8") {
                             vid.vid_link = link.to_owned();
@@ -481,21 +467,24 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"
                             let resp = get_isahc(client, &link)?;
                             let mut m3u8 = "";
 
-                            if quality != 0 {
+                            if matches!(quality, 0 | 1080) {
+                                m3u8 = resp.lines().last().unwrap();
+                            } else {
                                 for hls in resp.lines() {
                                     m3u8 = hls;
                                     if hls.ends_with(&format!("{quality}.m3u8")) {
                                         break;
                                     }
                                 }
-                            } else {
-                                m3u8 = resp.lines().last().unwrap();
                             }
-
                             let split_link = link.rsplit_once('/').unwrap().0;
                             vid.vid_link = format!("{}/{}", split_link, m3u8);
                         }
                     }
+                }
+                6 => {
+                    vid.vid_link = source_name_url.get(&provider).unwrap().to_string();
+                    vid.referrer = Some("https://allanime.to");
                 }
                 _ => unreachable!(),
             }
@@ -515,8 +504,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"
 }
 
 fn format_timestamp(seconds: f32) -> String {
-    let whole_seconds = seconds.trunc() as i32;
-    let milliseconds = ((seconds - whole_seconds as f32) * 100.0).round() as i32;
+    let whole_seconds = seconds.trunc() as u32;
+    let milliseconds = ((seconds - whole_seconds as f32) * 100.0).round() as u32;
 
     let hours = whole_seconds / 3600;
     let minutes = (whole_seconds % 3600) / 60;
@@ -526,15 +515,6 @@ fn format_timestamp(seconds: f32) -> String {
         "{:02}:{:02}:{:02}.{:02}",
         hours, minutes, seconds, milliseconds
     )
-}
-
-fn get_json(
-    client: &HttpClient,
-    provider: u8,
-    source_name_url: &HashMap<u8, Box<str>>,
-) -> Result<Value, Box<dyn Error>> {
-    let link = source_name_url.get(&provider).unwrap();
-    get_isahc_json(client, link)
 }
 
 fn choice_selection(select: &str, is_rofi: bool) -> String {

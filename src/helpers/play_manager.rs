@@ -1,27 +1,14 @@
 use crate::{Todo, Vid, RED, RESET, YELLOW};
 use std::{
-    env, fs,
+    env::consts::OS,
+    fs,
     process::{Command, Stdio},
 };
 
 pub async fn play_manage(mut vid: Vid, todo: Todo) {
     match todo {
         Todo::Play => {
-            let mut mpv_args = Vec::new();
-
-            if let Some(audio_link) = vid.audio_link {
-                mpv_args.push(format!("--audio-file={}", audio_link))
-            }
-
-            if let Some(sub_file) = vid.subtitle_path {
-                mpv_args.push(format!("--sub-file={}", sub_file))
-            }
-
-            if let Some(referrer) = vid.referrer {
-                mpv_args.push(format!("--referrer={referrer}"));
-            }
-
-            if env::consts::OS == "android" {
+            if OS == "android" {
                 Command::new("am")
                     .arg("start")
                     .args(["--user", "0"])
@@ -31,32 +18,43 @@ pub async fn play_manage(mut vid: Vid, todo: Todo) {
                     .stdout(Stdio::null())
                     .stderr(Stdio::null())
                     .spawn()
-                    .expect("Failed to execute am command");
-            } else if Command::new("mpv")
-                .args(mpv_args)
-                .args([
-                    &vid.vid_link,
-                    "--no-terminal",
-                    "--force-seekable",
-                    "--force-window=immediate",
-                    "--speed=1",
-                    "--sub-visibility",
-                    &format!("--force-media-title={}", vid.title),
-                ])
-                //.arg(format!("--user-agent={}", vid.user_agent))
-                //.arg(format!("--referrer={}", vid.referrer))
-                .output()
-                .expect("Failed to execute mpv")
-                .status
-                .code()
-                .unwrap()
-                == 2
-            {
-                eprintln!("{RED}Faulty video link{RESET}");
+                    .expect("Failed to execute 'am' cmd");
+            } else {
+                let mut mpv_args = Vec::new();
+
+                if let Some(audio_link) = vid.audio_link {
+                    mpv_args.push(format!("--audio-file={}", audio_link))
+                }
+
+                if let Some(sub_file) = vid.subtitle_path {
+                    mpv_args.push(format!("--sub-file={}", sub_file));
+                    mpv_args.push(String::from("--sub-visibility"))
+                }
+
+                if let Some(referrer) = vid.referrer {
+                    mpv_args.push(format!("--referrer={}", referrer))
+                }
+
+                Command::new("clear")
+                    .spawn()
+                    .expect("Failed to execute 'clear' cmd");
+
+                Command::new("mpv")
+                    .args(mpv_args)
+                    .args([
+                        &vid.vid_link,
+                        "--force-seekable",
+                        "--force-window=immediate",
+                        "--speed=1",
+                        &format!("--force-media-title={}", vid.title),
+                    ])
+                    .stdout(Stdio::null())
+                    .status()
+                    .expect("Failed to execute mpv");
             }
         }
         Todo::Download => {
-            vid.title = vid.title.replace(" /", "").replace('/', "");
+            vid.title = vid.title.replace('/', "\\");
 
             if vid.vid_link.ends_with(".m3u8") {
                 if Command::new("hls")
@@ -64,16 +62,14 @@ pub async fn play_manage(mut vid: Vid, todo: Todo) {
                     .args(["-o", &vid.title])
                     .arg(&vid.vid_link)
                     .status()
-                    .expect(
-                        "Failed to execute hls
+                    .expect("Failed to execute hls
                         Copy the script from https://github.com/CoolnsX/hls_downloader/blob/main/hls &
-                        move it to your $PATH",
-                    )
+                        move it to your $PATH")
                     .success()
                 {
                     println!("{}\nDownload Completed: {}{}", YELLOW, vid.title, RESET);
                 } else {
-                    eprintln!("{}\nDownload failed {}{}", RED, vid.title, RESET);
+                    eprintln!("{}\nDownload failed: {}{}", RED, vid.title, RESET);
                 }
             } else if let Some(audio_link) = &vid.audio_link {
                 download(&vid, &vid.vid_link, " video", "mp4").await;
