@@ -110,7 +110,7 @@ eren -h
 
 - mpv or mpv-android (best media player)
 - ffmpeg (merging downloaded video & audio)
-- [hls](https://github.com/CoolnsX/hls_downloader) (for downloading m3u8 from provider Luf-mp4)
+- [hls](https://github.com/CoolnsX/hls_downloader) (for downloading m3u8 from provider Ak & Luf-mp4)
 
 ## Optimal Dependency
 
