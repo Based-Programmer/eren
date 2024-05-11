@@ -8,18 +8,17 @@ use isahc::HttpClient;
 use serde::Deserialize;
 use serde_json::{from_str, Value};
 use std::{
-    collections::HashMap, env::consts::OS, error::Error, fs, io::ErrorKind::InvalidInput,
-    process::exit,
+    collections::HashMap, env::consts::OS, error::Error, fs, io::ErrorKind::NotFound, process::exit,
 };
 use tokio::{sync::mpsc, task};
 use url::form_urlencoded::byte_serialize;
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
 struct Subtitle {
     body: Vec<Content>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
 struct Content {
     from: f32,
     to: f32,
@@ -246,9 +245,7 @@ fn search(
         sort, query, mode,
     );
 
-    let link = allanime_api_link(&variables, SEARCH_GQL);
-
-    get_isahc_json(client, &link)
+    allanime_api_resp(variables, client, SEARCH_GQL)
 }
 
 fn get_episodes(
@@ -258,37 +255,43 @@ fn get_episodes(
     mode: &str,
 ) -> Result<Value, Box<dyn Error>> {
     const EPISODES_GQL: &str = "query ($showId: String!, $translationType: VaildTranslationTypeEnumType!, $episodeString: String!) {
-    episode(
-        showId: $showId
-        translationType: $translationType
-        episodeString: $episodeString
-    ) {
-        episodeString
-        sourceUrls
-        episodeInfo {
-            notes
+        episode(
+            showId: $showId
+            translationType: $translationType
+            episodeString: $episodeString
+        ) {
+            episodeString
+            sourceUrls
+            episodeInfo {
+                notes
+            }
         }
-    }
-}";
+    }";
 
     let variables = format!(
         r#"{{"showId":"{}","translationType":"{}","episodeString":"{}"}}"#,
         id, mode, episode_num
     );
 
-    let link = allanime_api_link(&variables, EPISODES_GQL);
-
-    get_isahc_json(client, &link)
+    allanime_api_resp(variables, client, EPISODES_GQL)
 }
 
-fn allanime_api_link(variables: &str, query: &str) -> Box<str> {
-    format!(
+fn allanime_api_resp(
+    variables: String,
+    client: &HttpClient,
+    query: &str,
+) -> Result<Value, Box<dyn Error>> {
+    let link = format!(
         "{}?variables={}&query={}",
         ALLANIME_API,
         byte_serialize(variables.as_bytes()).collect::<String>(),
         byte_serialize(query.as_bytes()).collect::<String>()
     )
-    .into()
+    .into_boxed_str();
+
+    drop(variables);
+
+    get_isahc_json(client, &link)
 }
 
 fn decrypt_allanime(source_url: &str) -> Result<Box<str>, Box<dyn Error>> {
@@ -336,7 +339,7 @@ fn get_streaming_link(
                             for video in vid_link {
                                 if quality == video["height"] {
                                     match video["url"].as_str() {
-                                        Some(vid_url) => vid.vid_link = vid_url.to_owned(),
+                                        Some(vid_url) => vid_url.clone_into(&mut vid.vid_link),
                                        None => eprintln!("{RED}Failed to desired quality from provider Ak{RESET}"),
                                     }
                                     break;
@@ -346,7 +349,7 @@ fn get_streaming_link(
 
                         if vid.vid_link.is_empty() {
                             match vid_link[0]["url"].as_str() {
-                                Some(vid_link) => vid.vid_link = vid_link.to_owned(),
+                                Some(vid_link) => vid_link.clone_into(&mut vid.vid_link),
                                 None => eprintln!("Failed to get best video link from Ak provider"),
                             }
                         }
@@ -453,13 +456,13 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"
                 }
                 3 | 4 => {
                     if let Some(link) = v["links"][0]["link"].as_str() {
-                        vid.vid_link = link.to_owned();
+                        link.clone_into(&mut vid.vid_link);
                     }
                 }
                 5 => {
                     if let Some(link) = v["links"][0]["link"].as_str() {
                         if link.ends_with(".original.m3u8") {
-                            vid.vid_link = link.to_owned();
+                            link.clone_into(&mut vid.vid_link);
                         } else {
                             let link: Box<str> = link.into();
                             drop(v);
@@ -489,13 +492,14 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"
                 _ => unreachable!(),
             }
         }
+
         provider = provider % 6 + 1;
         count += 1;
     }
 
     if vid.vid_link.is_empty() {
         Err(Box::new(std::io::Error::new(
-            InvalidInput,
+            NotFound,
             "No video link was found",
         )))
     } else {

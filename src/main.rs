@@ -51,11 +51,8 @@ pub enum Todo {
 async fn main() {
     let mut query = String::new();
     let mut todo = Todo::Play;
-    let mut sub = false;
     let mut quality = 0;
     let mut provider = 1;
-    let mut is_rofi = false;
-    let mut sort_by_top = false;
     let matches = command!()
         .arg(arg!(-s --sub "Sets mode to sub").action(SetTrue))
         .arg(arg!(-r --rofi "Sets selection menu to rofi").action(SetTrue))
@@ -114,10 +111,6 @@ async fn main() {
             .expect("Quality must be a number");
     }
 
-    if matches.get_flag("sub") {
-        sub = true;
-    }
-
     if matches.get_flag("download") {
         todo = Todo::Download;
     } else if matches.get_flag("debug") {
@@ -129,23 +122,15 @@ async fn main() {
         provider = 2;
     }
 
-    if matches.get_flag("rofi") {
-        is_rofi = true;
-    }
-
-    if matches.get_flag("top") {
-        sort_by_top = true;
-    }
-
     if let Some(anime) = matches.get_many("query") {
         query = anime.cloned().collect::<Vec<String>>().join(" ");
     }
 
-    drop(matches);
+    let sub = matches.get_flag("sub");
+    let sort_by_top = matches.get_flag("top");
+    let is_rofi = matches.get_flag("rofi") || !is_terminal();
 
-    if !is_terminal() {
-        is_rofi = true;
-    }
+    drop(matches);
 
     if query.trim().is_empty() {
         if !is_rofi {

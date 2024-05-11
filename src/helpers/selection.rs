@@ -62,7 +62,14 @@ fn rofi(selection: &str, prompt: &str, is_multi: bool) -> Result<String, Box<dyn
     let mut output = String::new();
 
     match process.stdout.unwrap().read_to_string(&mut output) {
-        Ok(_) => Ok(output.trim_end_matches('\n').to_owned()),
+        Ok(_) => {
+            if output.is_empty() {
+                eprintln!("Nothing's selected");
+                exit(0);
+            }
+
+            Ok(output.trim_end_matches('\n').to_owned())
+        }
         Err(err) => Err(Box::new(err)),
     }
 }
