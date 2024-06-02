@@ -1,7 +1,10 @@
 mod helpers;
 mod providers;
 
-use clap::{arg, command, value_parser, ArgAction::SetTrue};
+use clap::{
+    arg, command, value_parser,
+    ArgAction::{Append, SetTrue},
+};
 use helpers::{is_terminal::is_terminal, provider_num::provider_num, selection::selection};
 use providers::allanime::allanime;
 use std::{
@@ -59,17 +62,17 @@ async fn main() {
         .arg(arg!(-t --top "Sort by Top (gets best search results only)").action(SetTrue))
         .arg(
             arg!(-d --download "Downloads video using aria2")
-                .conflicts_with_all(&["get", "debug"])
+                .conflicts_with_all(["get", "debug"])
                 .action(SetTrue),
         )
         .arg(
             arg!(-g --get "Gets video link")
-                .conflicts_with_all(&["debug", "download"])
+                .conflicts_with_all(["debug", "download"])
                 .action(SetTrue),
         )
         .arg(
             arg!(-b --debug "Prints video link, audio link, etc")
-                .conflicts_with_all(&["get", "download"])
+                .conflicts_with_all(["get", "download"])
                 .action(SetTrue),
         )
         .arg(
@@ -91,8 +94,8 @@ async fn main() {
         )
         .arg(
             arg!([query] "Anime Name")
-                .multiple_values(true)
-                .value_parser(value_parser!(String)),
+                .value_parser(value_parser!(String))
+                .action(Append),
         )
         .get_matches();
 
@@ -138,9 +141,7 @@ async fn main() {
             stdout().flush().expect("Failed to flush stdout");
             stdin().read_line(&mut query).expect("Failed to read line");
 
-            query = query
-                .trim_end_matches(|ch| ch == '\n' || ch == ' ')
-                .to_owned();
+            query = query.trim_end_matches(['\n', ' ']).to_owned();
         } else {
             query = selection("", "Search a Cartoon/Anime: ", false, is_rofi);
         }
