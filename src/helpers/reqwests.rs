@@ -18,9 +18,7 @@ pub fn get_isahc_json(
     let mut retry: u8 = 0;
 
     loop {
-        let mut resp_body = client.get(link)?;
-
-        if let Ok(json) = resp_body.json() {
+        if let Ok(json) = client.get(link)?.json() {
             return Ok(json);
         } else if retry == MAX_RETRY {
             return Err(Box::new(std::io::Error::new(
@@ -30,6 +28,7 @@ pub fn get_isahc_json(
         }
 
         retry += 1;
+        // println!("{retry}");
     }
 }
 
@@ -37,6 +36,6 @@ pub fn client(user_agent: &str, referrer: &str) -> Result<HttpClient, Error> {
     HttpClient::builder()
         .version_negotiation(VersionNegotiation::http2())
         .redirect_policy(Follow)
-        .default_headers(&[("user-agent", user_agent), ("referer", referrer)])
+        .default_headers([("user-agent", user_agent), ("referer", referrer)])
         .build()
 }

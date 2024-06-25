@@ -147,6 +147,7 @@ async fn main() {
         }
 
         if query.trim().is_empty() {
+            eprintln!("{RED}Query is empty.\nExiting...{RESET}");
             exit(0);
         }
     }

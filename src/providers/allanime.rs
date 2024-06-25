@@ -25,7 +25,9 @@ struct Content {
     content: String,
 }
 
-const ALLANIME_API: &str = "https://api.allanime.day/api";
+const API: &str = "https://api.allanime.day/api";
+const CLOCK_JSON_API: &str = "https://allanime.day/apivtwo/clock.json?id=";
+const BASE_URL: &str = "https://allmanga.to";
 
 pub async fn allanime(
     query: &str,
@@ -37,7 +39,7 @@ pub async fn allanime(
     sort_by_top: bool,
 ) -> Result<(), Box<dyn Error>> {
     let mode = if sub { "sub" } else { "dub" };
-    let client = &client("uwu", "https://allanime.to")?;
+    let client = &client("uwu", BASE_URL)?;
 
     let search_data = search(query, mode, sort_by_top, client)?;
 
@@ -283,7 +285,7 @@ fn allanime_api_resp(
 ) -> Result<Value, Box<dyn Error>> {
     let link = format!(
         "{}?variables={}&query={}",
-        ALLANIME_API,
+        API,
         byte_serialize(variables.as_bytes()).collect::<String>(),
         byte_serialize(query.as_bytes()).collect::<String>()
     )
@@ -301,11 +303,7 @@ fn decrypt_allanime(source_url: &str) -> Result<Box<str>, Box<dyn Error>> {
         .collect();
 
     Ok(decoded_link
-        .replacen(
-            "/apivtwo/clock?id=",
-            "https://allanime.day/apivtwo/clock.json?id=",
-            1,
-        )
+        .replacen("/apivtwo/clock?id=", CLOCK_JSON_API, 1)
         .into())
 }
 
@@ -350,35 +348,40 @@ fn get_streaming_link(
                         if vid.vid_link.is_empty() {
                             match vid_link[0]["url"].as_str() {
                                 Some(vid_link) => vid_link.clone_into(&mut vid.vid_link),
-                                None => eprintln!("Failed to get best video link from Ak provider"),
+                                None => eprintln!(
+                                    "{RED}Failed to get best video link from Ak provider{RESET}"
+                                ),
                             }
                         }
 
-                        vid.vid_link = vid.vid_link.trim_matches('"').to_owned();
+                        if vid.vid_link.is_empty() {
+                            eprintln!("{RED}Failed to get best video link from Ak provider{RESET}")
+                        } else {
+                            vid.vid_link = vid.vid_link.trim_matches('"').to_owned();
 
-                        vid.audio_link = Some(
-                            v["links"][0]["rawUrls"]["audios"][0]["url"]
-                                .as_str()
-                                .expect("Failed to get audio link from Ak provider")
-                                .trim_matches('"')
-                                .to_owned(),
-                        );
+                            vid.audio_link = Some(
+                                v["links"][0]["rawUrls"]["audios"][0]["url"]
+                                    .as_str()
+                                    .expect("Failed to get audio link from Ak provider")
+                                    .trim_matches('"')
+                                    .to_owned(),
+                            );
 
-                        let subs = {
-                            let subtitle_link = v["links"][0]["subtitles"][0]["src"]
-                                .as_str()
-                                .expect("Failed to get subtitle link from Ak provider")
-                                .trim_matches('"')
-                                .replacen("https://allanime.pro/", "https://allanime.day/", 1)
-                                .into_boxed_str();
+                            let subs = {
+                                let subtitle_link = v["links"][0]["subtitles"][0]["src"]
+                                    .as_str()
+                                    .expect("Failed to get subtitle link from Ak provider")
+                                    .trim_matches('"')
+                                    .replacen("https://allanime.pro/", "https://allanime.day/", 1)
+                                    .into_boxed_str();
 
-                            drop(v);
+                                drop(v);
 
-                            let sub_resp = get_isahc(client, &subtitle_link)?;
+                                let sub_resp = get_isahc(client, &subtitle_link)?;
 
-                            match from_str::<Subtitle>(&sub_resp) {
-                                Ok(subtitle) => {
-                                    let mut subs = String::from(
+                                match from_str::<Subtitle>(&sub_resp) {
+                                    Ok(subtitle) => {
+                                        let mut subs = String::from(
 "[Script Info]
 ScriptType: v4.00+
 WrapStyle: 0
@@ -398,30 +401,31 @@ Style: 4-normal,Noto Sans,60,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text");
 
-                                    for content in subtitle.body {
-                                        subs.push_str(&format!(
-                                            "\nDialogue: 0,{},{},Default,,0,0,0,,{}",
-                                            format_timestamp(content.from),
-                                            format_timestamp(content.to),
-                                            content.content.replace('\n', "\\n")
-                                        ));
+                                        for content in subtitle.body {
+                                            subs.push_str(&format!(
+                                                "\nDialogue: 0,{},{},Default,,0,0,0,,{}",
+                                                format_timestamp(content.from),
+                                                format_timestamp(content.to),
+                                                content.content.replace('\n', "\\n")
+                                            ));
+                                        }
+
+                                        subs.into_boxed_str()
                                     }
-
-                                    subs.into_boxed_str()
+                                    Err(_) => sub_resp,
                                 }
-                                Err(_) => sub_resp,
-                            }
-                        };
+                            };
 
-                        let tmp_path = if OS == "android" {
-                            "/data/data/com.termux/files/usr/tmp/"
-                        } else {
-                            "/tmp/"
-                        };
+                            let tmp_path = if OS == "android" {
+                                "/data/data/com.termux/files/usr/tmp/"
+                            } else {
+                                "/tmp/"
+                            };
 
-                        let path = format!("{}{}.ass", tmp_path, vid.title);
-                        fs::write(&path, &*subs)?;
-                        vid.subtitle_path = Some(path);
+                            let path = format!("{}{}.ass", tmp_path, vid.title);
+                            fs::write(&path, &*subs)?;
+                            vid.subtitle_path = Some(path);
+                        }
                     }
                 }
                 2 => {
@@ -487,7 +491,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"
                 }
                 6 => {
                     vid.vid_link = source_name_url.get(&provider).unwrap().to_string();
-                    vid.referrer = Some("https://allanime.to");
+                    vid.referrer = Some(BASE_URL);
                 }
                 _ => unreachable!(),
             }
