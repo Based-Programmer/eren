@@ -3,8 +3,7 @@ use isahc::{
     prelude::Configurable,
     Error, HttpClient, ReadResponseExt,
 };
-use serde_json::Value;
-use std::io::ErrorKind::ConnectionRefused;
+use serde_json::{from_str, Value};
 
 pub fn get_isahc(client: &HttpClient, link: &str) -> Result<Box<str>, Error> {
     Ok(client.get(link)?.text()?.into())
@@ -18,17 +17,25 @@ pub fn get_isahc_json(
     let mut retry: u8 = 0;
 
     loop {
-        if let Ok(json) = client.get(link)?.json() {
+        let resp = client.get(link)?.text()?;
+
+        if resp == "error no result" {
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "no result",
+            )));
+        }
+
+        if let Ok(json) = from_str(&resp) {
             return Ok(json);
         } else if retry == MAX_RETRY {
             return Err(Box::new(std::io::Error::new(
-                ConnectionRefused,
+                std::io::ErrorKind::ConnectionRefused,
                 "Too many requests",
             )));
         }
 
         retry += 1;
-        // println!("{retry}");
     }
 }
 

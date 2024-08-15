@@ -2,7 +2,7 @@
 name = "eren"
 authors = ["BASED"]
 license = "GPL-3.0"
-version = "0.3.1"
+version = "0.3.3"
 edition = "2021"
 description = "Stream & Download Animes from your terminal"
 keywords = ["anime", "allanime", "gogoanime", "cli", "scraper"]

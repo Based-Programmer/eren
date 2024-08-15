@@ -1,6 +1,7 @@
 use crate::{
     helpers::{
-        play_manager::play_manage, provider_num::provider_num, reqwests::*, selection::selection,
+        name_provider::provider_name, play_manager::play_manage, provider_num::provider_num,
+        reqwests::*, selection::selection,
     },
     Todo, Vid, RED, RESET,
 };
@@ -325,7 +326,18 @@ fn get_streaming_link(
         if source_name_url.contains_key(&provider) {
             let v = if provider != 6 {
                 let link = source_name_url.get(&provider).unwrap();
-                get_isahc_json(client, link)?
+
+                match get_isahc_json(client, link) {
+                    Ok(res) => res,
+                    Err(err) if err.to_string() == "no result" => {
+                        eprintln!(
+                            "{RED}Empty response from {}{RESET}",
+                            provider_name(provider)
+                        );
+                        Value::Null
+                    }
+                    Err(err) => return Err(err),
+                }
             } else {
                 Value::Null
             };
