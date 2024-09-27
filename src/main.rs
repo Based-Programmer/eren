@@ -88,8 +88,7 @@ async fn main() {
             arg!(-p --provider <Provider> "Changes Provider")
                 .required(false)
                 .value_parser([
-                    "Ak", "Default", "Sak", "S-mp4", "Luf-mp4", "Yt-mp4", "1", "2", "3", "4", "5",
-                    "6",
+                    "Ak", "Default", "S-mp4", "Luf-mp4", "Yt-mp4", "1", "2", "3", "4", "5",
                 ]),
         )
         .arg(

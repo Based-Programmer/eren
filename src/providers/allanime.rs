@@ -1,6 +1,6 @@
 use crate::{
     helpers::{
-        name_provider::provider_name, play_manager::play_manage, provider_num::provider_num,
+        play_manager::play_manage, provider_num::provider_name, provider_num::provider_num,
         reqwests::*, selection::selection,
     },
     Todo, Vid, RED, RESET,
@@ -169,10 +169,7 @@ pub async fn allanime(
                 for source in sources {
                     if let Some(name) = source["sourceName"].as_str() {
                         if let Some(url) = source["sourceUrl"].as_str() {
-                            if matches!(
-                                name,
-                                "Ak" | "Default" | "Sak" | "S-mp4" | "Luf-mp4" | "Yt-mp4"
-                            ) {
+                            if matches!(name, "Ak" | "Default" | "S-mp4" | "Luf-mp4" | "Yt-mp4") {
                                 match decrypt_allanime(url) {
                                     Ok(decoded_link) => {
                                         let provider_num =  provider_num(name);
@@ -322,9 +319,9 @@ fn get_streaming_link(
         ..Default::default()
     };
 
-    while vid.vid_link.is_empty() && count < 6 {
+    while vid.vid_link.is_empty() && count < 5 {
         if source_name_url.contains_key(&provider) {
-            let v = if provider != 6 {
+            let v = if provider != 5 {
                 let link = source_name_url.get(&provider).unwrap();
 
                 match get_isahc_json(client, link) {
@@ -470,12 +467,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"
                         }
                     }
                 }
-                3 | 4 => {
+                3 => {
                     if let Some(link) = v["links"][0]["link"].as_str() {
                         link.clone_into(&mut vid.vid_link);
                     }
                 }
-                5 => {
+                4 => {
                     if let Some(link) = v["links"][0]["link"].as_str() {
                         if link.ends_with(".original.m3u8") {
                             link.clone_into(&mut vid.vid_link);
@@ -501,7 +498,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"
                         }
                     }
                 }
-                6 => {
+                5 => {
                     vid.vid_link = source_name_url.get(&provider).unwrap().to_string();
                     vid.referrer = Some(BASE_URL);
                 }
@@ -509,7 +506,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"
             }
         }
 
-        provider = provider % 6 + 1;
+        provider = provider % 5 + 1;
         count += 1;
     }
 
