@@ -78,6 +78,7 @@ eren -p Luf-mp4 death note
 - use Tab in the tui [skim](https://github.com/lotabout/skim)
 - use Shift + Enter in [rofi](https://github.com/davatorium/rofi) 
 - select 1 & 12 & it will play 1 to 12
+- In mpv-android, play a episode first then multi-select using `select` option
 
 #### Rofi
 
