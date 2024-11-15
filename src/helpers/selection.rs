@@ -13,10 +13,7 @@ fn skim(selection: &str, prompt: &str, is_multi: bool) -> String {
         .nosort(true)
         .prompt(Some(prompt))
         .build()
-        .unwrap_or_else(|_| {
-            eprintln!("Failed to build options for fuzzy selector skim");
-            exit(1);
-        });
+        .expect("Failed to build options for fuzzy selector skim");
 
     let items = SkimItemReader::default().of_bufread(Cursor::new(selection.to_owned()));
 

@@ -48,7 +48,7 @@ pub async fn play_manage(mut vid: Vid, todo: Todo) {
                         "--speed=1",
                         &format!("--force-media-title={}", vid.title),
                     ])
-                    .stdout(Stdio::null())
+                    // .stdout(Stdio::null())
                     .status()
                     .expect("Failed to execute mpv");
             }

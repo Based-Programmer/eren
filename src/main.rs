@@ -5,11 +5,11 @@ use clap::{
     arg, command, value_parser,
     ArgAction::{Append, SetTrue},
 };
-use helpers::{is_terminal::is_terminal, provider_num::provider_num, selection::selection};
+use helpers::{provider_num::provider_num, selection::selection};
 use providers::allanime::allanime;
 use std::{
     env::consts::OS,
-    io::{stdin, stdout, Write},
+    io::{stdin, stdout, IsTerminal, Write},
     process::exit,
 };
 
@@ -130,7 +130,7 @@ async fn main() {
 
     let sub = matches.get_flag("sub");
     let sort_by_top = matches.get_flag("top");
-    let is_rofi = matches.get_flag("rofi") || !is_terminal();
+    let is_rofi = matches.get_flag("rofi") || !stdin().is_terminal();
 
     drop(matches);
 
